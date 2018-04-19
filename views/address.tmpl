@@ -35,7 +35,7 @@
                                 {{end}}
                             </td>
                         {{else}}
-                            {{if ge .KnownTransactions .MaxTxLimit}}
+                            {{if ge $TxnCount .MaxTxLimit}}
                             <td class="fs28 mono nowrap d-flex align-items-center justify-content-end">unavailable</td>
                             {{else}}
                             <td class="fs28 mono nowrap fs16-decimal d-flex align-items-center justify-content-end">{{.AmountUnspent.ToCoin}}</td>
@@ -54,7 +54,7 @@
                                 {{end}}
                             </td>
                         {{else}}
-                            {{if ge .KnownTransactions .MaxTxLimit}}
+                            {{if ge $TxnCount .MaxTxLimit}}
                             <td class="mono nowrap text-right">unavailable</td>
                             {{else}}
                             <td class="mono nowrap text-right">{{.AmountReceived.ToCoin}}</td>
@@ -72,7 +72,7 @@
                                 {{end}}
                             </td>
                         {{else}}
-                            {{if ge .KnownTransactions .MaxTxLimit}}
+                            {{if ge $TxnCount .MaxTxLimit}}
                             <td class="mono nowrap text-right">unavailable</td>
                             {{else}}
                             <td class="mono nowrap text-right">{{.AmountSent.ToCoin}}</td>
@@ -98,10 +98,7 @@
                     {{if lt .NumTransactions $TxnCount}}
                     <div div class="d-flex flex-wrap-reverse align-items-center justify-content-end">
                         <span class="fs12 nowrap text-right">
-                            {{intComma (add .Offset 1)}} &mdash; {{intComma (add .Offset .NumTransactions)}} of {{intComma $TxnCount}} transactions
-                            {{if and (not .Fullmode) (ge .KnownTransactions .MaxTxLimit)}}
-                            <sup>*</sup>
-                            {{end}}
+                            {{intComma (add .Offset 1)}} &mdash; {{intComma (add .Offset .NumTransactions)}} of {{if and (not .Fullmode) (ge $TxnCount .MaxTxLimit)}}at least<sup>*</sup> {{end}}{{intComma $TxnCount}} occurrences
                         </span>
                         <nav aria-label="address transactions navigation" data-limit="{{.Limit}}" class="ml-2">
                             <ul class="pagination mb-0 pagination-sm">
@@ -112,7 +109,7 @@
                                         id="prev"
                                     >Previous</a>
                                 </li>
-                                <li class="page-item {{if lt (subtract .KnownTransactions .Offset) (add .Limit 1)}}disabled{{end}}">
+                                <li class="page-item {{if lt (subtract $TxnCount .Offset) (add .Limit 1)}}disabled{{end}}">
                                     <a
                                         class="page-link"
                                         href="{{.Path}}?n={{.Limit}}&start={{add .Offset .Limit}}&txntype={{.TxnType}}"
@@ -208,11 +205,6 @@
                         <option {{if eq .TxnType "debit"}}selected{{end}} value="debit">Debits</option>
                     </select>
                 </div>
-                {{if and (not .Fullmode) (ge .KnownTransactions .MaxTxLimit)}}
-                <div>
-                    *Limit of {{.MaxTxLimit}} transactions shown in lite mode.
-                </div>
-                {{end}}
                 <div
                     id="pagesize-wrapper"
                     class="hidden d-flex align-items-center justify-content-end"
@@ -243,8 +235,10 @@
         </div>
     </div>
 
+{{.NumFundingTxns}}
+{{.TxnCount}}
     <script>
-        {{if lt .NumFundingTxns .KnownFundingTxns}}
+        {{if lt .NumFundingTxns $TxnCount}}
         $("#pagesize-wrapper").removeClass("hidden")
         $("#pagesize").change(function(ev) {
             Turbolinks.visit(

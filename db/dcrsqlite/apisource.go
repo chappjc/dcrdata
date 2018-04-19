@@ -1202,16 +1202,16 @@ func (db *wiredDB) GetExplorerAddress(address string, count, offset int64) *expl
 		return nil
 	}
 
+	if !ValidateNetworkAddress(addr, db.params) {
+		log.Debugf("Address %s is not valid for this network", address)
+		return nil
+	}
+
 	maxcount := explorer.MaxAddressRows
 	txs, err := db.client.SearchRawTransactionsVerbose(addr,
 		int(offset), int(maxcount), true, true, nil)
 	if err != nil && err.Error() == "-32603: No Txns available" {
-		log.Warnf("GetAddressTransactionsRaw failed for address %s: %v", addr, err)
-
-		if !ValidateNetworkAddress(addr, db.params) {
-			log.Warnf("Address %s is not valid for this network", address)
-			return nil
-		}
+		log.Debugf("GetAddressTransactionsRaw found no txns for address %s: %v", addr, err)
 		return &explorer.AddressInfo{
 			Address:    address,
 			MaxTxLimit: maxcount,
@@ -1221,49 +1221,66 @@ func (db *wiredDB) GetExplorerAddress(address string, count, offset int64) *expl
 		return nil
 	}
 
-	addressTxs := make([]*explorer.AddressTx, 0, len(txs))
-	for i, tx := range txs {
-		if int64(i) == count {
-			break
-		}
+	// Transactions on this page/chunk of the entire search -- the smaller of
+	// count and the number of search results.
+	numFoundTxns := int64(len(txs))
+	limitedNumTxns := count
+	if numFoundTxns < limitedNumTxns {
+		limitedNumTxns = numFoundTxns
+	}
+	limitedTxns := txs[:limitedNumTxns]
+
+	addressTxs := make([]*explorer.AddressTx, 0, limitedNumTxns)
+	for _, tx := range limitedTxns {
 		addressTxs = append(addressTxs, makeExplorerAddressTx(tx, address))
 	}
 
-	var numUnconfirmed, numReceiving, numSpending int64
-	var totalreceived, totalsent dcrutil.Amount
-
-	for _, tx := range txs {
-		if tx.Confirmations == 0 {
-			numUnconfirmed++
-		}
-		for _, y := range tx.Vout {
-			if len(y.ScriptPubKey.Addresses) != 0 {
-				if address == y.ScriptPubKey.Addresses[0] {
-					t, _ := dcrutil.NewAmount(y.Value)
-					if t > 0 {
-						totalreceived += t
+	// For this address, tallyTxns tallies number of transaction components,
+	// sent/received amounts, and number of unique transactions involved.
+	tallyTxns := func(txs []*dcrjson.SearchRawTransactionsResult) (numUniqueTxns int,
+		numUnconfirmed, numReceiving, numSpending int64, totalreceived, totalsent dcrutil.Amount) {
+		uniqueTxns := make(map[string]struct{})
+		for _, tx := range txs {
+			if _, found := uniqueTxns[tx.Txid]; !found {
+				uniqueTxns[tx.Txid] = struct{}{}
+			} else {
+				continue
+			}
+			if tx.Confirmations == 0 {
+				numUnconfirmed++
+			}
+			for _, y := range tx.Vout {
+				if len(y.ScriptPubKey.Addresses) != 0 {
+					if address == y.ScriptPubKey.Addresses[0] {
+						t, _ := dcrutil.NewAmount(y.Value)
+						if t > 0 {
+							totalreceived += t
+						}
+						numReceiving++
 					}
-					numReceiving++
+				}
+			}
+			for _, u := range tx.Vin {
+				if u.PrevOut != nil && len(u.PrevOut.Addresses) != 0 {
+					if address == u.PrevOut.Addresses[0] {
+						t, _ := dcrutil.NewAmount(*u.AmountIn)
+						if t > 0 {
+							totalsent += t
+						}
+						numSpending++
+					}
 				}
 			}
 		}
-		for _, u := range tx.Vin {
-			if u.PrevOut != nil && len(u.PrevOut.Addresses) != 0 {
-				if address == u.PrevOut.Addresses[0] {
-					t, _ := dcrutil.NewAmount(*u.AmountIn)
-					if t > 0 {
-						totalsent += t
-					}
-					numSpending++
-				}
-			}
-		}
+		numUniqueTxns = len(uniqueTxns)
+		return
 	}
 
-	numTxns, numberMaxOfTx := count, int64(len(txs))
-	if numTxns > numberMaxOfTx {
-		numTxns = numberMaxOfTx
-	}
+	// Tally data from all transactions in search results
+	_, numUnconfirmed, numReceiving, numSpending, totalreceived, totalsent := tallyTxns(txs)
+	// Semantics of #txns are txn *components*. First output of tallyTxns is
+	// actual transaction count.
+	numFoundTxns = numReceiving + numSpending + offset
 	balance := &explorer.AddressBalance{
 		Address:      address,
 		NumSpent:     numSpending,
@@ -1271,6 +1288,13 @@ func (db *wiredDB) GetExplorerAddress(address string, count, offset int64) *expl
 		TotalSpent:   int64(totalsent),
 		TotalUnspent: int64(totalreceived - totalsent),
 	}
+
+	// Tally data from this page/chunk of results
+	_, _, numReceivingLim, numSpendingLim, _, _ := tallyTxns(limitedTxns)
+	// Semantics of #txns are txn *components*. First output of tallyTxns is
+	// actual transaction count.
+	limitedNumTxns = numReceivingLim + numSpendingLim
+
 	return &explorer.AddressInfo{
 		Address:           address,
 		MaxTxLimit:        maxcount,
@@ -1278,19 +1302,21 @@ func (db *wiredDB) GetExplorerAddress(address string, count, offset int64) *expl
 		Offset:            offset,
 		NumUnconfirmed:    numUnconfirmed,
 		Transactions:      addressTxs,
-		NumTransactions:   numTxns,
-		NumFundingTxns:    numReceiving,
-		NumSpendingTxns:   numSpending,
+		NumTransactions:   limitedNumTxns,
+		NumFundingTxns:    numReceivingLim,
+		NumSpendingTxns:   numSpendingLim,
 		AmountReceived:    totalreceived,
 		AmountSent:        totalsent,
 		AmountUnspent:     totalreceived - totalsent,
 		Balance:           balance,
-		KnownTransactions: numberMaxOfTx,
+		KnownTransactions: numFoundTxns,
 		KnownFundingTxns:  numReceiving,
 		KnownSpendingTxns: numSpending,
 	}
 }
 
+// ValidateNetworkAddress checks if the address is valid for the network
+// corresponding to the given chaincfg.Params.
 func ValidateNetworkAddress(address dcrutil.Address, p *chaincfg.Params) bool {
 	return address.IsForNet(p)
 }
