@@ -924,3 +924,6 @@ body.darkBG .keynav-target {
   background-color: pink;
 }
 
+.upcoming-vote {
+  background-color: lightgrey;
+}
