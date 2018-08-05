@@ -180,12 +180,19 @@ out:
 			// Store block data with each saver
 			savers := p.dataSavers
 			if reorg {
-				savers = p.reorgDataSavers
+				// This check should be redundant with check above.
+				if reorgData.NewChainHead.IsEqual(hash) {
+					savers = p.reorgDataSavers
+				} else {
+					savers = nil
+				}
 			}
 			for _, s := range savers {
 				if s != nil {
 					// save data to wherever the saver wants to put it
-					s.Store(blockData, msgBlock)
+					if err = s.Store(blockData, msgBlock); err != nil {
+						log.Errorf("Failed to Store: %v", err)
+					}
 				}
 			}
 
