@@ -119,6 +119,14 @@ function ticketByOutputCountFunc (gData) {
   return map(gData.height, (n, i) => { return [n, gData.solo[i], gData.pooled[i]] })
 }
 
+function chainWorkFunc(gData){
+    return _.map(gData.time,(n,i) => { return [new Date(n), gData.chainwork[i]] })
+}
+
+function hashrateFunc(gData){
+    return _.map(gData.time,(n,i) => { return [new Date(n), gData.nethash[i]] })
+}
+
 function mapDygraphOptions (data, labelsVal, isDrawPoint, yLabel, xLabel, titleName, labelsMG, labelsMG2) {
   return merge({
     'file': data,
@@ -291,6 +299,7 @@ export default class extends Controller {
           plotter: barChartPlotter
         })
         break
+
       case 'ticket-by-outputs-blocks': // Tickets by output count graph for all blocks
         d = ticketByOutputCountFunc(data)
         assign(gOptions, mapDygraphOptions(
@@ -307,6 +316,34 @@ export default class extends Controller {
           stackedGraph: true,
           plotter: barChartPlotter
         })
+        break
+
+      case 'chainwork': // Total chainwork over time
+        d = chainWorkFunc(data)
+        assign(gOptions, mapDygraphOptions(
+          d,
+          ['Date', 'Cumulative Chainwork (exahash)'],
+          false,
+          'Cumulative Chainwork (exahash)',
+          'Date',
+          undefined,
+          true,
+          false
+        ))
+        break
+
+      case 'hashrate': // Total chainwork over time
+        d = hashrateFunc(data)
+        assign(gOptions, mapDygraphOptions(
+          d,
+          ['Date', 'Network Hashrate (terahash/s)'],
+          false,
+          'Network Hashrate (terahash/s)',
+          'Date',
+          undefined,
+          true,
+          false
+        ))
         break
     }
     this.chartsView.updateOptions(gOptions, false)
