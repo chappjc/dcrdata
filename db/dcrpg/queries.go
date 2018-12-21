@@ -2647,7 +2647,8 @@ func retrieveChainWork(db *sql.DB) (*dbtypes.ChartsData, *dbtypes.ChartsData, er
 			rate := diff.Div(diff, big.NewInt(int64(thisPt.time.Sub(lastPt.time).Seconds())))
 			rate.Div(rate, bigTera)
 			if !rate.IsUint64() {
-				log.Errorf("Failed to make uint64 from rate")
+				log.Errorf("Failed to make uint64 from rate. Work: %s, rate: %v, block time: %v",
+					workhex, rate, blocktime)
 				break
 			}
 			tDef := dbtypes.TimeDef{T: thisPt.time}

@@ -138,7 +138,8 @@ func (p *ChainMonitor) switchToSideChain(reorgData *txhelpers.ReorgData) (int32,
 		endHeight = int32(msgBlock.Header.Height)
 		endHash = msgBlock.BlockHash()
 
-		log.Infof("Connected block %v (height %d) from side chain.", endHash, endHeight)
+		log.Infof("Connected block %v (height %d, work %s) from side chain.",
+			endHash, endHeight, chainWork)
 
 		currentHeight++
 	}
