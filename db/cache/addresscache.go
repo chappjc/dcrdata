@@ -938,20 +938,15 @@ func (ac *AddressCache) NumAddresses() int {
 	return len(ac.a)
 }
 
-func (ac *AddressCache) purgeRowsToFit(numRows int) (haveSpace bool) {
-	if ac.cap < 1 || ac.capAddr < 1 {
-		return false
-	}
-
-	// First purge to meet address capacity when adding 1 new address.
+func (ac *AddressCache) purgeToFitNewAddr() {
+	// Ensure there is space for one new address.
 	addrsCached := len(ac.a)
-clearingaddrs:
 	for addrsCached >= ac.capAddr {
 		for a := range ac.a {
 			// Never purge the data for the project fund address.
 			if a == ac.ProjectAddress {
 				if len(ac.a) == 1 {
-					break clearingaddrs
+					return
 				}
 				continue
 			}
@@ -960,6 +955,15 @@ clearingaddrs:
 		}
 		addrsCached = len(ac.a)
 	}
+}
+
+func (ac *AddressCache) purgeRowsToFit(numRows int) (haveSpace bool) {
+	if ac.cap < 1 || ac.capAddr < 1 {
+		return false
+	}
+
+	// First purge to meet address capacity when adding 1 new address.
+	ac.purgeToFitNewAddr()
 
 	// If the cache is at or above row capacity, remove cache items to make room
 	// for the given number of rows.
@@ -987,20 +991,57 @@ clearing:
 	return cacheSize+numRows <= ac.cap && addrsCached < ac.capAddr // addrsCached+1 <= ac.capAddr
 }
 
+func (ac *AddressCache) purgeUtxosToFit(numUtxos int) (haveSpace bool) {
+	if ac.cap < 1 || ac.capAddr < 1 {
+		return false
+	}
+
+	// First purge to meet address capacity when adding 1 new address.
+	ac.purgeToFitNewAddr()
+
+	// If the cache is at or above utxo capacity, remove cache items to make
+	// room for the given number of utxos.
+	addrsCached, _, cacheSize := ac.length()
+clearing:
+	for cacheSize > 0 && cacheSize+numUtxos > ac.cap {
+		for a, aaci := range ac.a {
+			// nothing much to clear for this cached item
+			if len(aaci.utxos) == 0 {
+				continue
+			}
+			// Never purge the data for the project fund address.
+			if a == ac.ProjectAddress {
+				if len(ac.a) == 1 {
+					break clearing
+				}
+				continue
+			}
+			delete(ac.a, a)
+			break // recheck cacheSize
+		}
+		addrsCached, _, cacheSize = ac.length()
+	}
+
+	return cacheSize+numUtxos <= ac.cap && addrsCached < ac.capAddr // addrsCached+1 <= ac.capAddr
+}
+
 func (ac *AddressCache) addCacheItem(addr string, aci *AddressCacheItem) (success bool) {
 	if ac.cap < 1 || ac.capAddr < 1 {
 		return false
 	}
 
 	// We will overwrite any existing AddressCacheItem, so an existing item with
-	// rows set exists, account for these rows that would be removed.
-	var alreadyStored int
+	// rows and utxos set exists, account for these rows and utxos that would be
+	// removed.
+	var alreadyStoredRows, alreadyStoredUtxos int
 	aci0 := ac.a[addr]
 	if aci0 != nil {
-		alreadyStored = len(aci0.rows)
+		alreadyStoredRows = len(aci0.rows)
+		alreadyStoredUtxos = len(aci0.utxos)
 	}
-	haveSpace := ac.purgeRowsToFit(len(aci.rows) - alreadyStored)
-	if haveSpace {
+	haveRowSpace := ac.purgeRowsToFit(len(aci.rows) - alreadyStoredRows)
+	haveUtxoSpace := ac.purgeUtxosToFit(len(aci.utxos) - alreadyStoredUtxos)
+	if haveRowSpace && haveUtxoSpace {
 		ac.a[addr] = aci
 		log.Tracef("Added new AddressCacheItem: %s", addr)
 		success = true
@@ -1042,6 +1083,42 @@ func (ac *AddressCache) setCacheItemRows(addr string, rows []dbtypes.AddressRowC
 		updated = true
 	} else {
 		log.Debugf("No space in cache to set %d rows for %s!\n", len(rows), addr)
+	}
+	return
+}
+
+func (ac *AddressCache) setCacheItemUtxos(addr string, utxos []apitypes.AddressTxnOutput, block *BlockID) (updated bool) {
+	if ac.cap < 1 || ac.capAddr < 1 {
+		return false
+	}
+
+	aci := ac.a[addr]
+	if aci == nil || aci.BlockHash() != block.Hash {
+		return ac.addCacheItem(addr, &AddressCacheItem{
+			utxos:  utxos,
+			height: block.Height,
+			hash:   block.Hash,
+		})
+	}
+
+	aci.mtx.Lock()
+	defer aci.mtx.Unlock()
+	// If utxos is already set for this same block, there should be no need to
+	// even check the length, but confirm it is the same to be safe. If so,
+	// there is no need to save the same utxos slice. This is a successful set.
+	alreadyStored := len(aci.utxos)
+	if aci.utxos != nil && alreadyStored == len(utxos) {
+		updated = true
+		return
+	}
+
+	// Try to clear space from the cache for these utxos.
+	haveSpace := ac.purgeUtxosToFit(len(utxos) - alreadyStored)
+	if haveSpace {
+		aci.utxos = utxos
+		updated = true
+	} else {
+		log.Debugf("No space in cache to set %d utxos for %s!\n", len(utxos), addr)
 	}
 	return
 }
@@ -1124,7 +1201,7 @@ func (ac *AddressCache) StoreRowsCompact(addr string, rows []dbtypes.AddressRowC
 		rows = []dbtypes.AddressRowCompact{}
 	}
 
-	// respect cache capacity
+	// Respect cache capacity.
 	return ac.setCacheItemRows(addr, rows, block)
 }
 
@@ -1153,7 +1230,7 @@ func (ac *AddressCache) StoreBalance(addr string, balance *dbtypes.AddressBalanc
 		})
 	}
 
-	// cache is current, so just set the balance.
+	// Cache is current, so just set the balance.
 	aci.mtx.Lock()
 	aci.balance = balance
 	aci.mtx.Unlock()
@@ -1174,23 +1251,11 @@ func (ac *AddressCache) StoreUTXOs(addr string, utxos []apitypes.AddressTxnOutpu
 
 	ac.mtx.Lock()
 	defer ac.mtx.Unlock()
-	aci := ac.a[addr]
 
 	if block != nil && utxos == nil {
 		utxos = []apitypes.AddressTxnOutput{}
 	}
 
-	if aci == nil || aci.BlockHash() != block.Hash {
-		return ac.addCacheItem(addr, &AddressCacheItem{
-			utxos:  utxos,
-			height: block.Height,
-			hash:   block.Hash,
-		})
-	}
-
-	// cache is current, so just set the utxos.
-	aci.mtx.Lock()
-	aci.utxos = utxos
-	aci.mtx.Unlock()
-	return true
+	// Respect cache capacity.
+	return ac.setCacheItemUtxos(addr, utxos, block)
 }
