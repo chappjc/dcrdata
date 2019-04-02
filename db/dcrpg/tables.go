@@ -9,8 +9,8 @@ import (
 	"fmt"
 
 	"github.com/decred/dcrdata/db/dbtypes"
-	"github.com/decred/dcrdata/semver"
 	"github.com/decred/dcrdata/db/dcrpg/internal"
+	"github.com/decred/dcrdata/semver"
 )
 
 var createTableStatements = map[string]string{
@@ -379,7 +379,7 @@ func CheckCurrentTimeZone(db *sql.DB) (currentTZ string, err error) {
 	return
 }
 
-// CheckCurrentTimeZone queries for the default postgres time zone. This is the
+// CheckDefaultTimeZone queries for the default postgres time zone. This is the
 // value that would be observed if postgres were restarted using its current
 // configuration. The currently set time zone is also returned.
 func CheckDefaultTimeZone(db *sql.DB) (defaultTZ, currentTZ string, err error) {
