@@ -1,6 +1,9 @@
 package internal
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 const (
 	CreateAddressTable = `CREATE TABLE IF NOT EXISTS addresses (
@@ -19,29 +22,33 @@ const (
 
 	// insertAddressRow is the basis for several address insert/upsert
 	// statements.
-	insertAddressRow = `INSERT INTO addresses (address, matching_tx_hash, tx_hash,
-		tx_vin_vout_index, tx_vin_vout_row_id, value, block_time, is_funding, valid_mainchain, tx_type)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) `
+	insertAddressRowBase = `INSERT INTO addresses (address, matching_tx_hash, tx_hash,
+		tx_vin_vout_index, tx_vin_vout_row_id, value, block_time, is_funding, valid_mainchain, tx_type) VALUES `
+	insertAddressRowArgsTmpl = `($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)`
+	NumAddressArgs           = 10
+	insertAddressRowArgs     = `($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+	insertAddressRow         = insertAddressRowBase + insertAddressRowArgs
 
 	// InsertAddressRow inserts a address block row without checking for unique
 	// index conflicts. This should only be used before the unique indexes are
 	// created or there may be constraint violations (errors).
-	InsertAddressRow = insertAddressRow + `RETURNING id;`
+	insertAddressUncheckedSuffix = ` RETURNING id;`
+	InsertAddressRow             = insertAddressRow + insertAddressUncheckedSuffix
 
 	// UpsertAddressRow is an upsert (insert or update on conflict), returning
 	// the inserted/updated address row id.
-	UpsertAddressRow = insertAddressRow + `ON CONFLICT (tx_vin_vout_row_id, address, is_funding) DO UPDATE
-		SET matching_tx_hash = $2, tx_hash = $3, tx_vin_vout_index = $4,
+	upsertAddressSuffix = ` ON CONFLICT (tx_vin_vout_row_id, address, is_funding) DO UPDATE
+	SET matching_tx_hash = $2, tx_hash = $3, tx_vin_vout_index = $4,
 		block_time = $7, valid_mainchain = $9 RETURNING id;`
+	UpsertAddressRow = insertAddressRow + upsertAddressSuffix
 
 	// InsertAddressRowOnConflictDoNothing allows an INSERT with a DO NOTHING on
 	// conflict with addresses' unique tx index, while returning the row id of
 	// either the inserted row or the existing row that causes the conflict. The
 	// complexity of this statement is necessary to avoid an unnecessary UPSERT,
 	// which would have performance consequences. The row is not locked.
-	InsertAddressRowOnConflictDoNothing = `WITH inserting AS (` +
-		insertAddressRow +
-		`	ON CONFLICT (tx_vin_vout_row_id, address, is_funding) DO NOTHING -- no lock on row
+	insertAddressCheckedPrefix = `WITH inserting AS (`
+	insertAddressCheckedSuffix = ` ON CONFLICT (tx_vin_vout_row_id, address, is_funding) DO NOTHING -- no lock on row
 			RETURNING id
 		)
 		SELECT id FROM inserting
@@ -49,6 +56,7 @@ const (
 		SELECT id FROM addresses
 		WHERE  address = $1 AND is_funding = $8 AND tx_vin_vout_row_id = $5 -- only executed if no INSERT
 		LIMIT  1;`
+	InsertAddressRowOnConflictDoNothing = insertAddressCheckedPrefix + insertAddressRow + insertAddressCheckedSuffix
 
 	// IndexAddressTableOnVoutID creates the unique index uix_addresses_vout_id
 	// on (tx_vin_vout_row_id, address, is_funding).
@@ -359,6 +367,55 @@ func MakeAddressRowInsertStatement(checked, updateOnConflict bool) string {
 		return UpsertAddressRow
 	}
 	return InsertAddressRowOnConflictDoNothing
+}
+
+func MakeAddressRowMultilineInsertStatement(N int, checked, updateOnConflict bool) string {
+	if N == 0 {
+		return ""
+	}
+	var prefix, suffix string
+	switch {
+	case updateOnConflict: // implies checked / ignores checked
+		suffix = upsertAddressSuffix
+	case checked:
+		prefix = insertAddressCheckedPrefix
+		suffix = insertAddressCheckedSuffix
+	default: // unchecked
+		suffix = insertAddressUncheckedSuffix
+	}
+
+	totalArgs := N * NumAddressArgs
+	var totalArgChars int
+	if totalArgs == 1 { // `$1`
+		totalArgChars = totalArgs * 2
+	} else if totalArgs < 10 { // `$8, `
+		totalArgChars = totalArgs*4 - 2
+	} else if totalArgs < 100 { // `$98, `
+		totalArgChars = 9*4 + (totalArgs-9)*5 - 2
+	} else if totalArgs < 1000 { // `$998, `
+		totalArgChars = 9*4 + 90*5 + (totalArgs-99)*6 - 2
+	} else {
+		totalArgChars = totalArgs * 7 // ~
+	}
+
+	totalArgChars += 2 // parens
+
+	targetLength := len(prefix) + len(insertAddressRowBase) + totalArgChars + (N-1)*2 + len(suffix)
+
+	var stmtBuilder strings.Builder
+	stmtBuilder.Grow(targetLength)
+	stmtBuilder.WriteString(prefix)
+	stmtBuilder.WriteString(insertAddressRowBase)
+	var ii int
+	for i := 0; i < N-1; i++ {
+		fmt.Fprintf(&stmtBuilder, insertAddressRowArgsTmpl, ii+1, ii+2, ii+3, ii+4, ii+5, ii+6, ii+7, ii+8, ii+9, ii+10)
+		stmtBuilder.WriteString(", ")
+		ii += NumAddressArgs
+	}
+	fmt.Fprintf(&stmtBuilder, insertAddressRowArgsTmpl, ii+1, ii+2, ii+3, ii+4, ii+5, ii+6, ii+7, ii+8, ii+9, ii+10)
+	stmtBuilder.WriteString(suffix)
+	//fmt.Println(targetLength, stmtBuilder.Len())
+	return stmtBuilder.String()
 }
 
 // MakeSelectAddressTxTypesByAddress returns the selectAddressTxTypesByAddress query

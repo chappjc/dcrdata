@@ -3601,33 +3601,33 @@ type MsgBlockPG struct {
 func (pgb *ChainDB) storeTxns(txns []*dbtypes.Tx, vouts [][]*dbtypes.Vout, vins []dbtypes.VinTxPropertyARRAY,
 	updateExistingRecords bool) (dbAddressRows [][]dbtypes.AddressRow, txDbIDs []uint64, totalAddressRows, numOuts, numIns int, err error) {
 	// vins, vouts, and transactions inserts in atomic DB transaction
-	var dbTx *sql.Tx
-	dbTx, err = pgb.db.Begin()
-	if err != nil {
-		_ = dbTx.Rollback()
-		err = fmt.Errorf("failed to begin database transaction: %v", err)
-		return
-	}
+	// var dbTx *sql.Tx
+	// dbTx, err = pgb.db.Begin()
+	// if err != nil {
+	// 	_ = dbTx.Rollback()
+	// 	err = fmt.Errorf("failed to begin database transaction: %v", err)
+	// 	return
+	// }
 
-	checked, doUpsert := pgb.dupChecks, updateExistingRecords
+	//checked, doUpsert := pgb.dupChecks, updateExistingRecords
 
-	var voutStmt *sql.Stmt
-	voutStmt, err = dbTx.Prepare(internal.MakeVoutInsertStatement(checked, doUpsert))
-	if err != nil {
-		_ = dbTx.Rollback()
-		err = fmt.Errorf("failed to prepare vout insert statment: %v", err)
-		return
-	}
-	defer voutStmt.Close()
+	// var voutStmt *sql.Stmt
+	// voutStmt, err = dbTx.Prepare(internal.MakeVoutInsertStatement(checked, doUpsert))
+	// if err != nil {
+	// 	_ = dbTx.Rollback()
+	// 	err = fmt.Errorf("failed to prepare vout insert statment: %v", err)
+	// 	return
+	// }
+	// defer voutStmt.Close()
 
-	var vinStmt *sql.Stmt
-	vinStmt, err = dbTx.Prepare(internal.MakeVinInsertStatement(checked, doUpsert))
-	if err != nil {
-		_ = dbTx.Rollback()
-		err = fmt.Errorf("failed to prepare vin insert statment: %v", err)
-		return
-	}
-	defer vinStmt.Close()
+	// var vinStmt *sql.Stmt
+	// vinStmt, err = dbTx.Prepare(internal.MakeVinInsertStatement(checked, doUpsert))
+	// if err != nil {
+	// 	_ = dbTx.Rollback()
+	// 	err = fmt.Errorf("failed to prepare vin insert statment: %v", err)
+	// 	return
+	// }
+	// defer vinStmt.Close()
 
 	// dbAddressRows contains the data added to the address table, arranged as
 	// [tx_i][addr_j], transactions paying to different numbers of addresses.
@@ -3636,13 +3636,16 @@ func (pgb *ChainDB) storeTxns(txns []*dbtypes.Tx, vouts [][]*dbtypes.Vout, vins 
 	for it, Tx := range txns {
 		// Insert vouts, and collect AddressRows to add to address table for
 		// each output.
-		Tx.VoutDbIds, dbAddressRows[it], err = InsertVoutsStmt(voutStmt,
+		// Tx.VoutDbIds, dbAddressRows[it], err = InsertVoutsStmt(voutStmt,
+		// 	vouts[it], pgb.dupChecks, updateExistingRecords)
+		Tx.VoutDbIds, dbAddressRows[it], err = InsertVoutsMultiline(pgb.db,
 			vouts[it], pgb.dupChecks, updateExistingRecords)
 		if err != nil && err != sql.ErrNoRows {
 			err = fmt.Errorf("failure in InsertVoutsStmt: %v", err)
-			_ = dbTx.Rollback()
+			//_ = dbTx.Rollback()
 			return
 		}
+
 		totalAddressRows += len(dbAddressRows[it])
 		numOuts += len(Tx.VoutDbIds)
 		if err == sql.ErrNoRows || len(vouts[it]) != len(Tx.VoutDbIds) {
@@ -3650,17 +3653,27 @@ func (pgb *ChainDB) storeTxns(txns []*dbtypes.Tx, vouts [][]*dbtypes.Vout, vins 
 		}
 
 		// Insert vins
-		Tx.VinDbIds, err = InsertVinsStmt(vinStmt, vins[it], pgb.dupChecks,
+		// Tx.VinDbIds, err = InsertVinsStmt(vinStmt, vins[it], pgb.dupChecks,
+		// 	updateExistingRecords)
+		Tx.VinDbIds, err = InsertVinsMultiline(pgb.db, vins[it], pgb.dupChecks,
 			updateExistingRecords)
 		if err != nil && err != sql.ErrNoRows {
 			err = fmt.Errorf("failure in InsertVinsStmt: %v", err)
-			_ = dbTx.Rollback()
+			//_ = dbTx.Rollback()
 			return
 		}
 		numIns += len(Tx.VinDbIds)
 
 		// Return the transactions vout slice.
 		Tx.Vouts = vouts[it]
+	}
+
+	var dbTx *sql.Tx
+	dbTx, err = pgb.db.Begin()
+	if err != nil {
+		_ = dbTx.Rollback()
+		err = fmt.Errorf("failed to begin database transaction: %v", err)
+		return
 	}
 
 	// Get the tx PK IDs for storage in the blocks, tickets, and votes table.
@@ -3899,8 +3912,9 @@ func (pgb *ChainDB) storeBlockTxnTree(msgBlock *MsgBlockPG, txTree int8,
 	// Insert each new AddressRow, absent MatchingTxHash (spending txn since
 	// these new address rows are *funding*).
 	_, err = InsertAddressRowsDbTx(dbTx, dbAddressRowsFlat, pgb.dupChecks, updateExistingRecords)
+	//_, err = InsertAddressRowsMultiline(pgb.db, dbAddressRowsFlat, pgb.dupChecks, updateExistingRecords)
 	if err != nil {
-		_ = dbTx.Rollback()
+		//_ = dbTx.Rollback()
 		log.Error("InsertAddressRows:", err)
 		txRes.err = err
 		return txRes
@@ -3910,6 +3924,12 @@ func (pgb *ChainDB) storeBlockTxnTree(msgBlock *MsgBlockPG, txTree int8,
 	for _, ad := range dbAddressRowsFlat {
 		txRes.addresses[ad.Address] = struct{}{}
 	}
+
+	// dbTx, err := pgb.db.Begin()
+	// if err != nil {
+	// 	txRes.err = fmt.Errorf(`unable to begin database transaction: %v`, err)
+	// 	return txRes
+	// }
 
 	for it, tx := range dbTransactions {
 		// vins array for this transaction

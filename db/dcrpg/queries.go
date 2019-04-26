@@ -1269,6 +1269,46 @@ func InsertAddressRow(db *sql.DB, dbA *dbtypes.AddressRow, dupCheck, updateExist
 	return id, err
 }
 
+// InsertAddressRowsMultiline
+func InsertAddressRowsMultiline(db *sql.DB, dbAs []*dbtypes.AddressRow, checked bool, updateOnConflict ...bool) ([]uint64, error) {
+	doUpsert := true
+	if len(updateOnConflict) > 0 {
+		doUpsert = updateOnConflict[0]
+	}
+	doUpsert = doUpsert && checked
+
+	stmt, err := db.Prepare(internal.MakeAddressRowMultilineInsertStatement(len(dbAs), checked, doUpsert))
+	if err != nil {
+		return nil, err
+	}
+
+	allArgs := make([]interface{}, 0, internal.NumAddressArgs*len(dbAs))
+	for _, dbA := range dbAs {
+		allArgs = append(allArgs, dbA.Address, dbA.MatchingTxHash, dbA.TxHash,
+			dbA.TxVinVoutIndex, dbA.VinVoutDbID, dbA.Value, dbA.TxBlockTime,
+			dbA.IsFunding, dbA.ValidMainChain, dbA.TxType)
+	}
+
+	rows, err := stmt.Query(allArgs...)
+	if err != nil {
+		_ = stmt.Close()
+		return nil, fmt.Errorf("InsertAddressRowsMultiline INSERT query failed: %v", err)
+	}
+	defer closeRows(rows)
+
+	ids := make([]uint64, 0, len(dbAs))
+	for rows.Next() {
+		var id uint64
+		if err = rows.Scan(&id); err != nil {
+			_ = stmt.Close()
+			return ids, fmt.Errorf("InsertAddressRowsMultiline INSERT scan failed: %v", err)
+		}
+		ids = append(ids, id)
+	}
+
+	return ids, stmt.Close()
+}
+
 // InsertAddressRowsDbTx is like InsertAddressRows, except that it takes a
 // sql.Tx. The caller is required to Commit or Rollback the transaction
 // depending on the returned error value.
@@ -1894,6 +1934,46 @@ func InsertVin(db *sql.DB, dbVin dbtypes.VinTxProperty, checked bool, updateOnCo
 	return
 }
 
+// InsertVinsMultiline
+func InsertVinsMultiline(db *sql.DB, dbVins dbtypes.VinTxPropertyARRAY, checked bool, updateOnConflict ...bool) ([]uint64, error) {
+	doUpsert := true
+	if len(updateOnConflict) > 0 {
+		doUpsert = updateOnConflict[0]
+	}
+	doUpsert = doUpsert && checked
+
+	stmt, err := db.Prepare(internal.MakeVinMultilineInsertStatement(len(dbVins), checked, doUpsert))
+	if err != nil {
+		return nil, err
+	}
+
+	allArgs := make([]interface{}, 0, internal.NumVinArgs*len(dbVins))
+	for _, vin := range dbVins {
+		allArgs = append(allArgs, vin.TxID, vin.TxIndex, vin.TxTree,
+			vin.PrevTxHash, vin.PrevTxIndex, vin.PrevTxTree,
+			vin.ValueIn, vin.IsValid, vin.IsMainchain, vin.Time, vin.TxType)
+	}
+
+	rows, err := stmt.Query(allArgs...)
+	if err != nil {
+		_ = stmt.Close()
+		return nil, fmt.Errorf("InsertVinsMultiline INSERT query failed: %v", err)
+	}
+	defer closeRows(rows)
+
+	ids := make([]uint64, 0, len(dbVins))
+	for rows.Next() {
+		var id uint64
+		if err = rows.Scan(&id); err != nil {
+			_ = stmt.Close()
+			return ids, fmt.Errorf("InsertVinsMultiline INSERT scan failed: %v", err)
+		}
+		ids = append(ids, id)
+	}
+
+	return ids, stmt.Close()
+}
+
 // InsertVinsStmt is like InsertVins, except that it takes a sql.Stmt. The
 // caller is required to Close the transaction.
 func InsertVinsStmt(stmt *sql.Stmt, dbVins dbtypes.VinTxPropertyARRAY, checked bool, doUpsert bool) ([]uint64, error) {
@@ -1954,6 +2034,64 @@ func InsertVins(db *sql.DB, dbVins dbtypes.VinTxPropertyARRAY, checked bool, upd
 	}
 
 	return ids, dbtx.Commit()
+}
+
+// InsertVoutsMultiline
+func InsertVoutsMultiline(db *sql.DB, dbVouts []*dbtypes.Vout, checked bool, updateOnConflict ...bool) ([]uint64, []dbtypes.AddressRow, error) {
+	doUpsert := true
+	if len(updateOnConflict) > 0 {
+		doUpsert = updateOnConflict[0]
+	}
+	doUpsert = doUpsert && checked
+
+	stmt, err := db.Prepare(internal.MakeVoutMultilineInsertStatement(len(dbVouts), checked, doUpsert))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	allArgs := make([]interface{}, 0, internal.NumVoutArgs*len(dbVouts))
+	for _, vout := range dbVouts {
+		allArgs = append(allArgs, vout.TxHash, vout.TxIndex, vout.TxTree,
+			vout.Value, vout.Version,
+			vout.ScriptPubKey, vout.ScriptPubKeyData.ReqSigs,
+			vout.ScriptPubKeyData.Type,
+			pq.Array(vout.ScriptPubKeyData.Addresses))
+	}
+
+	rows, err := stmt.Query(allArgs...)
+	if err != nil {
+		_ = stmt.Close()
+		return nil, nil, fmt.Errorf("InsertVoutsMultiline INSERT query failed: %v", err)
+	}
+	defer closeRows(rows)
+
+	ids := make([]uint64, 0, len(dbVouts))
+	for rows.Next() {
+		var id uint64
+		if err = rows.Scan(&id); err != nil {
+			_ = stmt.Close()
+			return ids, nil, fmt.Errorf("InsertVoutsMultiline INSERT scan failed: %v", err)
+		}
+		ids = append(ids, id)
+	}
+
+	addressRows := make([]dbtypes.AddressRow, 0, len(dbVouts)) // may grow with multisig
+	for i, vout := range dbVouts {
+		for _, addr := range vout.ScriptPubKeyData.Addresses {
+			addressRows = append(addressRows, dbtypes.AddressRow{
+				Address:        addr,
+				TxHash:         vout.TxHash,
+				TxVinVoutIndex: vout.TxIndex,
+				VinVoutDbID:    ids[i],
+				TxType:         vout.TxType,
+				Value:          vout.Value,
+				// Not set here are: ValidMainchain, MatchingTxHash, IsFunding,
+				// AtomsCredit, AtomsDebit, and TxBlockTime.
+			})
+		}
+	}
+
+	return ids, addressRows, stmt.Close()
 }
 
 // InsertVout either inserts, attempts to insert, or upserts the given vout data

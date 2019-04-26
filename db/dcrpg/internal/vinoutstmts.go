@@ -3,7 +3,8 @@ package internal
 import (
 	"encoding/hex"
 	"fmt"
-
+	"strings"
+	
 	"github.com/decred/dcrdata/db/dbtypes"
 	"github.com/lib/pq"
 )
@@ -27,36 +28,42 @@ const (
 	);`
 
 	// insertVinRow is the basis for several vinvs insert/upsert statements.
-	insertVinRow = `INSERT INTO vins (tx_hash, tx_index, tx_tree, prev_tx_hash, prev_tx_index, prev_tx_tree,
-		value_in, is_valid, is_mainchain, block_time, tx_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) `
+	insertVinRowBase = `INSERT INTO vins (tx_hash, tx_index, tx_tree, prev_tx_hash, prev_tx_index, prev_tx_tree,
+		value_in, is_valid, is_mainchain, block_time, tx_type) VALUES `
+	insertVinRowArgsTmpl = `($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)`
+	NumVinArgs           = 11
+	insertVinRowArgs     = `($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+	insertVinRow         = insertVinRowBase + insertVinRowArgs
 
 	// InsertVinRow inserts a new vin row without checking for unique index
 	// conflicts. This should only be used before the unique indexes are created
 	// or there may be constraint violations (errors).
-	InsertVinRow = insertVinRow + `RETURNING id;`
+	insertVinUncheckedSuffix = ` RETURNING id;`
+	InsertVinRow             = insertVinRow + insertVinUncheckedSuffix
 
 	// UpsertVinRow is an upsert (insert or update on conflict), returning the
 	// inserted/updated vin row id.
-	UpsertVinRow = insertVinRow + `ON CONFLICT (tx_hash, tx_index, tx_tree) DO UPDATE
-		SET is_valid = $8, is_mainchain = $9, block_time = $10,
-			prev_tx_hash = $4, prev_tx_index = $5, prev_tx_tree = $6
-		RETURNING id;`
+	upsertVinSuffix = ` ON CONFLICT (tx_hash, tx_index, tx_tree) DO UPDATE
+	SET is_valid = $8, is_mainchain = $9, block_time = $10,
+		prev_tx_hash = $4, prev_tx_index = $5, prev_tx_tree = $6
+	RETURNING id;`
+	UpsertVinRow = insertVinRow + upsertVinSuffix
 
 	// InsertVinRowOnConflictDoNothing allows an INSERT with a DO NOTHING on
 	// conflict with vins' unique tx index, while returning the row id of either
 	// the inserted row or the existing row that causes the conflict. The
 	// complexity of this statement is necessary to avoid an unnecessary UPSERT,
 	// which would have performance consequences. The row is not locked.
-	InsertVinRowOnConflictDoNothing = `WITH inserting AS (` +
-		insertVinRow +
-		`	ON CONFLICT (tx_hash, tx_index, tx_tree) DO NOTHING -- no lock on row
-			RETURNING id
-		)
-		SELECT id FROM inserting
-		UNION  ALL
-		SELECT id FROM vins
-		WHERE  tx_hash = $1 AND tx_index = $2 AND tx_tree = $3 -- only executed if no INSERT
-		LIMIT  1;`
+	insertVinCheckedPrefix = `WITH inserting AS (`
+	insertVinCheckedSuffix = ` ON CONFLICT (tx_hash, tx_index, tx_tree) DO NOTHING -- no lock on row
+		RETURNING id
+	)
+	SELECT id FROM inserting
+	UNION  ALL
+	SELECT id FROM vins
+	WHERE  tx_hash = $1 AND tx_index = $2 AND tx_tree = $3 -- only executed if no INSERT
+	LIMIT  1;`
+	InsertVinRowOnConflictDoNothing = insertVinCheckedPrefix + insertVinRow + insertVinCheckedSuffix
 
 	// DeleteVinsDuplicateRows removes rows that would violate the unique index
 	// uix_vin. This should be run prior to creating the index.
@@ -164,29 +171,33 @@ const (
 		script_addresses TEXT[]
 	);`
 
-	// insertVinRow is the basis for several vout insert/upsert statements.
-	insertVoutRow = `INSERT INTO vouts (tx_hash, tx_index, tx_tree, value,
-		version, pkscript, script_req_sigs, script_type, script_addresses)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) `
+	// insertVoutRowBase is the basis for several vout insert/upsert statements.
+	insertVoutRowBase = `INSERT INTO vouts (tx_hash, tx_index, tx_tree, value,
+		version, pkscript, script_req_sigs, script_type, script_addresses) VALUES `
+	insertVoutRowArgsTmpl = `($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)`
+	NumVoutArgs           = 9
+	insertVoutRowArgs     = `($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	insertVoutRow         = insertVoutRowBase + insertVoutRowArgs
 
 	// InsertVoutRow inserts a new vout row without checking for unique index
 	// conflicts. This should only be used before the unique indexes are created
 	// or there may be constraint violations (errors).
-	InsertVoutRow = insertVoutRow + `RETURNING id;`
+	insertVoutUncheckedSuffix = ` RETURNING id;`
+	InsertVoutRow             = insertVoutRow + insertVoutUncheckedSuffix
 
 	// UpsertVoutRow is an upsert (insert or update on conflict), returning the
 	// inserted/updated vout row id.
-	UpsertVoutRow = insertVoutRow + `ON CONFLICT (tx_hash, tx_index, tx_tree) DO UPDATE
-		SET version = $5 RETURNING id;`
+	upsertVoutSuffix = ` ON CONFLICT (tx_hash, tx_index, tx_tree) DO UPDATE
+	SET version = $5 RETURNING id;`
+	UpsertVoutRow = insertVoutRow + upsertVoutSuffix
 
 	// InsertVoutRowOnConflictDoNothing allows an INSERT with a DO NOTHING on
 	// conflict with vouts' unique tx index, while returning the row id of
 	// either the inserted row or the existing row that causes the conflict. The
 	// complexity of this statement is necessary to avoid an unnecessary UPSERT,
 	// which would have performance consequences. The row is not locked.
-	InsertVoutRowOnConflictDoNothing = `WITH inserting AS (` +
-		insertVoutRow +
-		`	ON CONFLICT (tx_hash, tx_index, tx_tree) DO NOTHING -- no lock on row
+	insertVoutCheckedPrefix = `WITH inserting AS (`
+	insertVoutCheckedSuffix = ` ON CONFLICT (tx_hash, tx_index, tx_tree) DO NOTHING -- no lock on row
 			RETURNING id
 		)
 		SELECT id FROM inserting
@@ -194,6 +205,7 @@ const (
 		SELECT id FROM vouts
 		WHERE  tx_hash = $1 AND tx_index = $2 AND tx_tree = $3 -- only executed if no INSERT
 		LIMIT  1;`
+	InsertVoutRowOnConflictDoNothing = insertVoutCheckedPrefix + insertVoutRow + insertVoutCheckedSuffix
 
 	// DeleteVoutDuplicateRows removes rows that would violate the unique index
 	// uix_vout_txhash_ind. This should be run prior to creating the index.
@@ -254,20 +266,53 @@ func MakeVinInsertStatement(checked, updateOnConflict bool) string {
 	return InsertVinRowOnConflictDoNothing
 }
 
-var (
-	voutCopyStmt = pq.CopyIn("vouts",
-		"tx_hash", "tx_index", "tx_tree", "value", "version",
-		"pkscript", "script_req_sigs", " script_type", "script_addresses")
-	vinCopyStmt = pq.CopyIn("vins",
-		"tx_hash", "tx_index", "prev_tx_hash", "prev_tx_index")
-)
+func MakeVinMultilineInsertStatement(N int, checked, updateOnConflict bool) string {
+	if N == 0 {
+		return ""
+	}
+	var prefix, suffix string
+	switch {
+	case updateOnConflict: // implies checked / ignores checked
+		suffix = upsertVinSuffix
+	case checked:
+		prefix = insertVinCheckedPrefix
+		suffix = insertVinCheckedSuffix
+	default: // unchecked
+		suffix = insertVinUncheckedSuffix
+	}
 
-func MakeVoutCopyInStatement() string {
-	return voutCopyStmt
-}
+	totalArgs := N * NumVinArgs
+	var totalArgChars int
+	if totalArgs == 1 { // `$1`
+		totalArgChars = totalArgs * 2
+	} else if totalArgs < 10 { // `$8, `
+		totalArgChars = totalArgs*4 - 2
+	} else if totalArgs < 100 { // `$98, `
+		totalArgChars = 9*4 + (totalArgs-9)*5 - 2
+	} else if totalArgs < 1000 { // `$998, `
+		totalArgChars = 9*4 + 90*5 + (totalArgs-99)*6 - 2
+	} else {
+		totalArgChars = totalArgs * 7 // ~
+	}
 
-func MakeVinCopyInStatement() string {
-	return vinCopyStmt
+	totalArgChars += 2 // parens
+
+	targetLength := len(prefix) + len(insertVinRowBase) + totalArgChars + (N-1)*2 + len(suffix)
+
+	var stmtBuilder strings.Builder
+	stmtBuilder.Grow(targetLength)
+	stmtBuilder.WriteString(prefix)
+	stmtBuilder.WriteString(insertVinRowBase)
+	var ii int
+	for i := 0; i < N-1; i++ {
+		fmt.Fprintf(&stmtBuilder, insertVinRowArgsTmpl, ii+1, ii+2, ii+3, ii+4, ii+5, ii+6, ii+7, ii+8, ii+9, ii+10, ii+11)
+		stmtBuilder.WriteString(", ")
+		ii += NumVinArgs
+	}
+	fmt.Fprintf(&stmtBuilder, insertVinRowArgsTmpl, ii+1, ii+2, ii+3, ii+4, ii+5, ii+6, ii+7, ii+8, ii+9, ii+10, ii+11)
+	stmtBuilder.WriteString(suffix)
+	//fmt.Println(targetLength, stmtBuilder.Len())
+	return stmtBuilder.String()
 }
 
 // MakeVoutInsertStatement returns the appropriate vouts insert statement for
@@ -289,16 +334,51 @@ func MakeVoutInsertStatement(checked, updateOnConflict bool) string {
 	return InsertVoutRowOnConflictDoNothing
 }
 
-func makeARRAYOfVouts(vouts []*dbtypes.Vout) string {
-	rowSubStmts := make([]string, 0, len(vouts))
-	for i := range vouts {
-		hexPkScript := hex.EncodeToString(vouts[i].ScriptPubKey)
-		rowSubStmts = append(rowSubStmts,
-			fmt.Sprintf(`ROW(%d, %d, decode('%s','hex'), %d, '%s', %s)`,
-				vouts[i].Value, vouts[i].Version, hexPkScript,
-				vouts[i].ScriptPubKeyData.ReqSigs, vouts[i].ScriptPubKeyData.Type,
-				makeARRAYOfTEXT(vouts[i].ScriptPubKeyData.Addresses)))
+func MakeVoutMultilineInsertStatement(N int, checked, updateOnConflict bool) string {
+	if N == 0 {
+		return ""
+	}
+	var prefix, suffix string
+	switch {
+	case updateOnConflict: // implies checked / ignores checked
+		suffix = upsertVoutSuffix
+	case checked:
+		prefix = insertVoutCheckedPrefix
+		suffix = insertVoutCheckedSuffix
+	default: // unchecked
+		suffix = insertVoutUncheckedSuffix
 	}
 
-	return makeARRAYOfUnquotedTEXT(rowSubStmts) + "::vout_t[]"
+	totalArgs := N * NumVoutArgs
+	var totalArgChars int
+	if totalArgs == 1 { // `$1`
+		totalArgChars = totalArgs * 2
+	} else if totalArgs < 10 { // `$8, `
+		totalArgChars = totalArgs*4 - 2
+	} else if totalArgs < 100 { // `$98, `
+		totalArgChars = 9*4 + (totalArgs-9)*5 - 2
+	} else if totalArgs < 1000 { // `$998, `
+		totalArgChars = 9*4 + 90*5 + (totalArgs-99)*6 - 2
+	} else {
+		totalArgChars = totalArgs * 7 // ~
+	}
+
+	totalArgChars += 2 // parens
+
+	targetLength := len(prefix) + len(insertVoutRowBase) + totalArgChars + (N-1)*2 + len(suffix)
+
+	var stmtBuilder strings.Builder
+	stmtBuilder.Grow(targetLength)
+	stmtBuilder.WriteString(prefix)
+	stmtBuilder.WriteString(insertVoutRowBase)
+	var ii int
+	for i := 0; i < N-1; i++ {
+		fmt.Fprintf(&stmtBuilder, insertVoutRowArgsTmpl, ii+1, ii+2, ii+3, ii+4, ii+5, ii+6, ii+7, ii+8, ii+9)
+		stmtBuilder.WriteString(", ")
+		ii += NumVoutArgs
+	}
+	fmt.Fprintf(&stmtBuilder, insertVoutRowArgsTmpl, ii+1, ii+2, ii+3, ii+4, ii+5, ii+6, ii+7, ii+8, ii+9)
+	stmtBuilder.WriteString(suffix)
+	//fmt.Println(targetLength, stmtBuilder.Len())
+	return stmtBuilder.String()
 }
