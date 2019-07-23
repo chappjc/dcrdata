@@ -7,7 +7,7 @@ require (
 	github.com/Sereal/Sereal v0.0.0-20190416075407-a9d24ede505a // indirect
 	github.com/asdine/storm v2.2.0+incompatible
 	github.com/decred/dcrd/chaincfg v1.5.1
-	github.com/decred/dcrd/dcrjson/v2 v2.0.0
+	github.com/decred/dcrd/rpc/jsonrpc/types v1.0.0
 	github.com/decred/dcrdata/db/dbtypes/v2 v2.0.0
 	github.com/decred/dcrdata/semver v1.0.0
 	github.com/decred/politeia v0.0.0-20190415135723-1560639b5dd7
