@@ -32,7 +32,7 @@ require (
 	github.com/go-chi/chi v1.5.1
 	github.com/go-chi/docgen v1.1.0
 	github.com/google/gops v0.3.13
-	github.com/googollee/go-socket.io v1.4.4
+	github.com/googollee/go-socket.io v1.4.5-0.20210219074532-58933844272d
 	github.com/jessevdk/go-flags v1.4.1-0.20200711081900-c17162fe8fd7
 	github.com/jrick/logrotate v1.0.0
 	github.com/rs/cors v1.7.0
