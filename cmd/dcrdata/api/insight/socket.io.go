@@ -98,8 +98,8 @@ func NewSocketServer(params *chaincfg.Params, txGetter txhelpers.RawTransactionG
 		},
 	}
 	opts := &engineio.Options{
-		PingInterval: 3 * time.Second,
-		PingTimeout:  5 * time.Second,
+		PingInterval: 15 * time.Second,
+		PingTimeout:  45 * time.Second,
 		Transports:   []transport.Transport{wsTrans},
 	}
 	socketIOServer := socketio.NewServer(opts)
