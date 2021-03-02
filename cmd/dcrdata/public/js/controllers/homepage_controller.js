@@ -27,7 +27,7 @@ function mempoolTableRow (tx) {
     <td class="text-left">${tx.Type}</td>
     <td class="text-right">${humanize.threeSigFigs(tx.total || 0, false, 8)}</td>
     <td class="text-nowrap text-right">${tx.size} B</td>
-    <td class="text-right pr-1 text-nowrap" data-target="time.age" data-age="${tx.time}">${humanize.timeSince(tx.time)}</td>
+    <td class="text-right pr-1 text-nowrap" data-time-target="age" data-age="${tx.time}">${humanize.timeSince(tx.time)}</td>
   </tr>`
   dompurify.sanitize(tbody, { IN_PLACE: true, FORBID_TAGS: ['svg', 'math'] })
   return tbody.firstChild

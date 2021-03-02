@@ -29,7 +29,7 @@ function txTableRow (tx) {
         <td class="mono fs15 text-right">${humanize.decimalParts(tx.total, false, 8)}</td>
         <td class="mono fs15 text-right">${tx.size} B</td>
         <td class="mono fs15 text-right">${tx.fee_rate} DCR/kB</td>
-        <td class="mono fs15 text-right" data-target="time.age" data-age="${tx.time}">${humanize.timeSince(tx.time)}</td>
+        <td class="mono fs15 text-right" data-time-target="age" data-age="${tx.time}">${humanize.timeSince(tx.time)}</td>
     </tr>`)
 }
 
@@ -46,7 +46,7 @@ function voteTxTableRow (tx) {
         <td class="mono fs15">${tx.vote_info.vote_version}</td>
         <td class="mono fs15 text-right d-none d-sm-table-cell">${humanize.decimalParts(tx.total, false, 8)}</td>
         <td class="mono fs15 text-right">${humanize.bytes(tx.size)}</td>
-        <td class="mono fs15 text-right d-none d-sm-table-cell jsonly" data-target="time.age" data-age="${tx.time}">${humanize.timeSince(tx.time)}</td>
+        <td class="mono fs15 text-right d-none d-sm-table-cell jsonly" data-time-target="age" data-age="${tx.time}">${humanize.timeSince(tx.time)}</td>
     </tr>`)
 }
 

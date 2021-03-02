@@ -14,8 +14,8 @@
       data-address-txn-count="{{$TxnCount}}"
       data-address-balance="{{toFloat64Amount .Balance.TotalUnspent}}"
     >
-    <div class="fullscreen d-none" data-target="address.fullscreen" data-action="click->address#exitFullscreen">
-      <div class="secondary-card d-inline-block w-100 h-100 p-4" data-target="address.bigchart"></div>
+    <div class="fullscreen d-none" data-address-target="fullscreen" data-action="click->address#exitFullscreen">
+      <div class="secondary-card d-inline-block w-100 h-100 p-4" data-address-target="bigchart"></div>
     </div>
     <div class="row pb-4 px-2">
       <div class="col-24 col-xl-10 bg-white px-3 py-3 position-relative">
@@ -25,17 +25,17 @@
               <div class="fs22 pb-3">Address</div>
           {{- end}}
           <div class="text-left d-flex align-items-start flex-wrap">
-            <div class="fs15 medium-sans break-word d-inline-block hash-box mb-3 clipboard" data-target="address.addr">
+            <div class="fs15 medium-sans break-word d-inline-block hash-box mb-3 clipboard" data-address-target="addr">
               {{.Address}}{{template "copyTextIcon"}}
             </div>
             <a
               data-action="click->address#showQRCode"
-              data-target="address.qricon"
+              data-address-target="qricon"
               class="dcricon-qrcode jsonly no-underline color-inherit clickable lh1rem ml-2 mt-2 mb-3"
             ></a>
-            <div class="d-inline-block" data-target="address.qrbox">
+            <div class="d-inline-block" data-address-target="qrbox">
                 <div data-action="click->address#hideQRCode"
-                    data-target="address.qrimg"
+                    data-address-target="qrimg"
                     class="qrimg clickable d-inline-block mb-3"
                 ></div>
             </div>
@@ -87,7 +87,7 @@
           </div>
           <div class="row pb-2">
               {{- if ne .NumUnconfirmed 0}}
-                <div class="col-12 pb-2 fs14 text-secondary text-left" data-target="address.numUnconfirmed">
+                <div class="col-12 pb-2 fs14 text-secondary text-left" data-address-target="numUnconfirmed">
                     <span class="font-weight-bold">Unconfirmed</span>: <span class="addr-unconfirmed-count">{{.NumUnconfirmed}}</span>
                 </div>
               {{- end}}
@@ -115,15 +115,15 @@
         <noscript>
           <div class="text-center pt-5 fs15">Enable Javascript to see charts</div>
         </noscript>
-        <div class="jsonly h-100" data-target="address.littlechart">
-          <div class="d-flex flex-column h-100" data-target="address.chartbox">
+        <div class="jsonly h-100" data-address-target="littlechart">
+          <div class="d-flex flex-column h-100" data-address-target="chartbox">
             <div class="d-flex flex-wrap justify-content-around align-items-start">
-              <div class="loader-v2 loading" data-target="address.chartLoader"></div>
+              <div class="loader-v2 loading" data-address-target="chartLoader"></div>
               <div class="btn-set secondary-card d-inline-flex flex-nowrap mx-2">
                 <label>Chart</label>
                 <select
                     class="chart-box d-inline-flex"
-                    data-target="address.options"
+                    data-address-target="options"
                     data-action="change->address#changeGraph"
                 >
                     <option name="balance" value="balance">Balance</option>
@@ -134,7 +134,7 @@
               <div
                   class="btn-set secondary-card d-inline-flex flex-nowrap mx-2"
                   data-toggle="buttons"
-                  data-target="address.zoom"
+                  data-address-target="zoom"
                   data-action="click->address#onZoom"
               >
                 <label>Zoom</label>
@@ -148,7 +148,7 @@
                   class="btn-set secondary-card d-inline-flex flex-nowrap mx-2"
                   data-toggle="buttons"
                   data-txcount="{{$TxnCount}}"
-                  data-target="address.interval"
+                  data-address-target="interval"
                   data-action="click->address#changeBin"
               >
                   <label class="d-inline-flex pr-1">Group By </label>
@@ -158,7 +158,7 @@
                   <button name="day" data-fixed="1">Day</button>
                   <button name="all" data-fixed="1">Block</button>
               </div>
-              <div class="row flex-nowrap d-inline-flex d-hide mx-2 mb-2" data-target="address.flow"
+              <div class="row flex-nowrap d-inline-flex d-hide mx-2 mb-2" data-address-target="flow"
                   data-action="change->address#updateFlow">
                   <label class="customcheck ml-2 d-inline-flex">Sent
                       <input type="checkbox" value="2">
@@ -175,43 +175,43 @@
               </div>
             </div>
             <div class="p-3 address_chart_wrap">
-              <div class="expando dcricon-expand" data-target="address.expando" data-action="click->address#toggleExpand"></div>
-              <div class="py-5 fs16 d-none" data-target="address.noconfirms"></div>
-              <div data-target="address.chart" class="address_chart"></div>
+              <div class="expando dcricon-expand" data-address-target="expando" data-action="click->address#toggleExpand"></div>
+              <div class="py-5 fs16 d-none" data-address-target="noconfirms"></div>
+              <div data-address-target="chart" class="address_chart"></div>
             </div>
           </div>
         </div>
       </div>
     </div>
     {{if not .IsDummyAddress}}
-    <div class="position-relative" data-target="address.listbox">
+    <div class="position-relative" data-address-target="listbox">
         <div class="row align-items-center">
           <div class="mr-auto mb-0 h4 col-24 col-sm-6">Transactions</div>
           <div class="d-flex flex-wrap-reverse align-items-center justify-content-end py-1 col-24 col-sm-18">
-              <span class="fs12 nowrap text-right" data-target="address.range">
+              <span class="fs12 nowrap text-right" data-address-target="range">
                   showing {{intComma (add .Offset 1)}} &mdash; {{intComma (add .Offset .NumTransactions)}} of
-                      <span data-target="address.txnCount" data-txn-count="{{$TxnCount}}">{{intComma $TxnCount}}</span> transactions
+                      <span data-address-target="txnCount" data-txn-count="{{$TxnCount}}">{{intComma $TxnCount}}</span> transactions
               </span>
               <nav aria-label="address transactions navigation"
                     data-limit="{{.Limit}}"
                     class="my-1 ml-2{{if ge .NumTransactions $TxnCount}} d-hide{{end}}"
-                    data-target="address.pagebuttons">
+                    data-address-target="pagebuttons">
                   <ul class="pagination mb-0 pagination-sm">
                       <li class="page-item {{if eq .Offset 0}}disabled{{end}}"
-                          data-target="address.pageminus">
+                          data-address-target="pageminus">
                           <a  class="page-link"
                               href="{{.Path}}?n={{.Limit}}&start={{if gt (subtract .Offset .Limit) 0}}{{subtract .Offset .Limit}}{{else}}0{{end}}&txntype={{$txType}}"
                               data-turbolinks="false"
-                              data-target="address.paginator"
+                              data-address-target="paginator"
                               data-action="address#prevPage"
                           >Previous</a>
                       </li>
                       <li class="page-item {{if lt (subtract $TxnCount .Offset) (add .Limit 1)}}disabled{{end}}"
-                          data-target="address.pageplus">
+                          data-address-target="pageplus">
                           <a  class="page-link"
                               href="{{.Path}}?n={{.Limit}}&start={{add .Offset .Limit}}&txntype={{$txType}}"
                               data-turbolinks="false"
-                              data-target="address.paginator"
+                              data-address-target="paginator"
                               data-action="address#nextPage"
                           >Next</a>
                       </li>
@@ -220,15 +220,15 @@
           </div>
         </div>
         <div class="position-relative">
-          <div class="loader-v2" data-target="address.listLoader"></div>
-          <div class="position-relative" data-target="address.table">
+          <div class="loader-v2" data-address-target="listLoader"></div>
+          <div class="position-relative" data-address-target="table">
             {{template "addressTable" .}}
           </div>
         </div>
-        <span class="fs13 py-1 d-block{{if not .IsMerged}} d-hide{{end}}" data-target="address.mergedMsg">
+        <span class="fs13 py-1 d-block{{if not .IsMerged}} d-hide{{end}}" data-address-target="mergedMsg">
             *No unconfirmed transactions shown in merged views.
         </span>
-        <div class="text-right pr-3" data-target="address.tablePagination">
+        <div class="text-right pr-3" data-address-target="tablePagination">
           {{if ne .Offset 0}}
             <a  class="d-inline-block dcricon-arrow-left m-1 fz20"
                 data-action="click->address#pageNumberLink"
@@ -259,7 +259,7 @@
               <label class="mb-0 mr-1" for="txntype">Type</label>
               <select
                 name="txntype"
-                data-target="address.txntype"
+                data-address-target="txntype"
                 data-action="change->address#changeTxType"
                 class="form-control-sm mb-2 mr-sm-2 mb-sm-0"
               >
@@ -277,7 +277,7 @@
               <select
                   name="pagesize"
                   id="pagesize"
-                  data-target="address.pagesize"
+                  data-address-target="pagesize"
                   data-action="change->address#changePageSize"
                   class="form-control-sm mb-2 mr-sm-2 mb-sm-0 {{if lt $TxnCount 20}}disabled{{end}}"
                   {{- if lt $TxnCount 20}} disabled{{end}}

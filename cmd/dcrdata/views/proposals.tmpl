@@ -10,10 +10,10 @@
                         Politeia Proposals
                         <span class="mb-0 fs11 text-black-50 nowrap">
                             &nbsp;(<span class="mr-2">Proposals Sync:&nbsp;
-                                <span data-controller="time" data-target="time.age" data-age="{{$.LastPropSync}}"></span>&nbsp;ago
+                                <span data-controller="time" data-time-target="age" data-age="{{$.LastPropSync}}"></span>&nbsp;ago
                             </span>
                             <span>Votes Sync:&nbsp;
-                                <span data-controller="time" data-target="time.age" data-age="{{$.LastVotesSync}}"></span>&nbsp;ago
+                                <span data-controller="time" data-time-target="age" data-age="{{$.LastVotesSync}}"></span>&nbsp;ago
                             </span>)
                         </span>
                     </h4>
@@ -28,7 +28,7 @@
                             <select
                                 id="votestatus"
                                 class="form-control-sm mb-2 mr-sm-2 mb-sm-0"
-                                data-target="pagenavigation.votestatus"
+                                data-pagenavigation-target="votestatus"
                                 data-action="change->pagenavigation#setFilterbyVoteStatus"
                             >
                                 <option value="all">All</option>
@@ -58,7 +58,7 @@
                             <label class="mb-0 mr-1" for="tbPagesize">Page Size</label>
                             <select
                                 id="tbPagesize"
-                                data-target="pagenavigation.pagesize"
+                                data-pagenavigation-target="pagesize"
                                 data-action="change->pagenavigation#setPageSize"
                                 data-offset="{{$.Offset}}"
                                 data-offsetkey="offset"
@@ -222,7 +222,7 @@
                                &mdash;
                             {{end}}
                         </td>
-                        <td class="text-right" data-target="time.age" data-age="{{.Timestamp}}"></td>
+                        <td class="text-right" data-time-target="age" data-age="{{.Timestamp}}"></td>
                     </tr>
                 {{end}}
                 {{end}}

@@ -26,7 +26,7 @@
                         <select
                             id="selectBox"
                             class="form-control chart-form-control"
-                            data-target="charts.chartSelect"
+                            data-charts-target="chartSelect"
                             data-action="charts#selectChart"
                         >
                             <option value="ticket-price">Ticket Price</option>
@@ -48,7 +48,7 @@
                     </div>
                 </div>
 
-                <div class="chart-control-wrapper mr-2 mb-1" data-target="charts.zoomSelector">
+                <div class="chart-control-wrapper mr-2 mb-1" data-charts-target="zoomSelector">
                     <div class="chart-control-label">ZOOM</div>
                     <div class="chart-control">
                         <ul
@@ -58,7 +58,7 @@
                                 <a
                                     class="nav-link active"
                                     href="javascript:void(0);"
-                                    data-target="charts.zoomOption"
+                                    data-charts-target="zoomOption"
                                     data-action="click->charts#setZoom"
                                     data-option="all"
                                 >All</a>
@@ -67,7 +67,7 @@
                                 <a
                                     class="nav-link"
                                     href="javascript:void(0);"
-                                    data-target="charts.zoomOption"
+                                    data-charts-target="zoomOption"
                                     data-action="click->charts#setZoom"
                                     data-option="year"
                                 >Year</a>
@@ -76,7 +76,7 @@
                                 <a
                                     class="nav-link"
                                     href="javascript:void(0);"
-                                    data-target="charts.zoomOption"
+                                    data-charts-target="zoomOption"
                                     data-action="click->charts#setZoom"
                                     data-option="month"
                                 >Month</a>
@@ -85,7 +85,7 @@
                                 <a
                                     class="nav-link"
                                     href="javascript:void(0);"
-                                    data-target="charts.zoomOption"
+                                    data-charts-target="zoomOption"
                                     data-action="click->charts#setZoom"
                                     data-option="week"
                                 >Week</a>
@@ -94,7 +94,7 @@
                                 <a
                                     class="nav-link"
                                     href="javascript:void(0);"
-                                    data-target="charts.zoomOption"
+                                    data-charts-target="zoomOption"
                                     data-action="click->charts#setZoom"
                                     data-option="day"
                                 >Day</a>
@@ -103,7 +103,7 @@
                     </div>
                 </div>
 
-                <div class="chart-control-wrapper mr-2 mb-1" data-target="charts.binSelector">
+                <div class="chart-control-wrapper mr-2 mb-1" data-charts-target="binSelector">
                     <div class="chart-control-label">BIN</div>
                     <div class="chart-control">
                         <ul
@@ -113,7 +113,7 @@
                                 <a
                                     class="nav-link active"
                                     href="javascript:void(0);"
-                                    data-target="charts.binSize"
+                                    data-charts-target="binSize"
                                     data-action="click->charts#setBin"
                                     data-option="day"
                                 >Day</a>
@@ -122,7 +122,7 @@
                                 <a
                                     class="nav-link"
                                     href="javascript:void(0);"
-                                    data-target="charts.binSize"
+                                    data-charts-target="binSize"
                                     data-action="click->charts#setBin"
                                     data-option="block"
                                 >Blocks</a>
@@ -131,7 +131,7 @@
                     </div>
                 </div>
 
-                <div class="chart-control-wrapper mr-2 mb-1" data-target="charts.scaleSelector">
+                <div class="chart-control-wrapper mr-2 mb-1" data-charts-target="scaleSelector">
                     <div class="chart-control-label">SCALE</div>
                     <div class="chart-control">
                         <ul
@@ -141,7 +141,7 @@
                                 <a
                                     class="nav-link active"
                                     href="javascript:void(0);"
-                                    data-target="charts.scaleType"
+                                    data-charts-target="scaleType"
                                     data-action="click->charts#setScale"
                                     data-option="linear"
                                 >Linear</a>
@@ -150,7 +150,7 @@
                                 <a
                                     class="nav-link"
                                     href="javascript:void(0);"
-                                    data-target="charts.scaleType"
+                                    data-charts-target="scaleType"
                                     data-action="click->charts#setScale"
                                     data-option="log"
                                 >Log</a>
@@ -159,40 +159,40 @@
                     </div>
                 </div>
 
-                <div class="chart-control-wrapper mr-2 mb-1" data-target="charts.vSelector">
+                <div class="chart-control-wrapper mr-2 mb-1" data-charts-target="vSelector">
                     <div class="chart-control-label">VISIBILITY</div>
                     <div class="chart-control">
                         <ul
                             class="nav nav-pills"
                         >
-                            <li class="nav-item" data-target="charts.vSelectorItem" data-charts="ticket-price">
+                            <li class="nav-item" data-charts-target="vSelectorItem" data-charts="ticket-price">
                                 <label class="customcheck ml-2 d-inline-flex">Price
                                     <input
                                         type="checkbox"
                                         checked="checked"
                                         data-action="click->charts#setVisibility"
-                                        data-target="charts.ticketsPrice"
+                                        data-charts-target="ticketsPrice"
                                     >
                                     <span class="checkmark tickets-price"></span>
                                 </label>
                             </li>
-                            <li class="nav-item" data-target="charts.vSelectorItem" data-charts="ticket-price">
+                            <li class="nav-item" data-charts-target="vSelectorItem" data-charts="ticket-price">
                                 <label class="customcheck mx-2 d-inline-flex">Tickets Bought
                                     <input
                                         type="checkbox"
                                         data-action="click->charts#setVisibility"
-                                        data-target="charts.ticketsPurchase"
+                                        data-charts-target="ticketsPurchase"
                                     >
                                     <span class="checkmark tickets-bought"></span>
                                 </label>
                             </li>
                             <li class="nav-item">
                                 <label class="customcheck mx-2 d-inline-flex"
-                                    data-target="charts.vSelectorItem" data-charts="coin-supply">Mixed Coins
+                                    data-charts-target="vSelectorItem" data-charts="coin-supply">Mixed Coins
                                     <input
                                         type="checkbox"
                                         data-action="click->charts#setVisibility"
-                                        data-target="charts.anonymitySet"
+                                        data-charts-target="anonymitySet"
                                     >
                                     <span class="checkmark total-mixed"></span>
                                 </label>
@@ -201,7 +201,7 @@
                     </div>
                 </div>
 
-                <div class="chart-control-wrapper mr-2 mb-1" data-target="charts.modeSelector">
+                <div class="chart-control-wrapper mr-2 mb-1" data-charts-target="modeSelector">
                     <div class="chart-control-label">MODE</div>
                     <div class="chart-control">
                         <ul
@@ -211,7 +211,7 @@
                                 <a
                                     class="nav-link active"
                                     href="javascript:void(0);"
-                                    data-target="charts.modeOption"
+                                    data-charts-target="modeOption"
                                     data-action="click->charts#setMode"
                                     data-option="smooth"
                                 >Smooth</a>
@@ -220,7 +220,7 @@
                                 <a
                                     class="nav-link"
                                     href="javascript:void(0);"
-                                    data-target="charts.modeOption"
+                                    data-charts-target="modeOption"
                                     data-action="click->charts#setMode"
                                     data-option="stepped"
                                 >Stepped</a>
@@ -234,10 +234,10 @@
         </div>
 
 
-        <div data-target="charts.chartWrapper" class="chart-wrapper pl-2 pr-2 mb-5">
+        <div data-charts-target="chartWrapper" class="chart-wrapper pl-2 pr-2 mb-5">
             <div
                 class="chartview"
-                data-target="charts.chartsView">
+                data-charts-target="chartsView">
             </div>
             <div class="d-flex flex-wrap justify-content-center align-items-center mb-1 mt-1">
                 <div class="chart-control chart-control-wrapper">
@@ -246,7 +246,7 @@
                             <a
                                 class="nav-link active"
                                 href="javascript:void(0);"
-                                data-target="charts.axisOption"
+                                data-charts-target="axisOption"
                                 data-action="click->charts#setAxis"
                                 data-option="time"
                             >Time</a>
@@ -255,7 +255,7 @@
                             <a
                                 class="nav-link"
                                 href="javascript:void(0);"
-                                data-target="charts.axisOption"
+                                data-charts-target="axisOption"
                                 data-action="click->charts#setAxis"
                                 data-option="height"
                             >Blocks</a>
@@ -267,7 +267,7 @@
               <div class="d-flex flex-column align-items-center p-2 px-3 my-2 bg-white">
                 <span class="fs18">JSON-formatted raw data for this chart @</span>
                 <div class="d-inline-block text-center fs15 clipboard py-1">
-                  <span class="text-center" data-target="charts.rawDataURL"></span>
+                  <span class="text-center" data-charts-target="rawDataURL"></span>
                   {{template "copyTextIcon"}}
                 </div>
               </div>
@@ -280,8 +280,8 @@
                 </div>
             </div>
             <div class="d-flex justify-content-center legend-wrapper">
-                <div class="legend d-flex align-items-center" data-target="charts.labels">
-                  <div class="pr-3" data-target="charts.legendEntry"><div class="dygraph-legend-line" data-target="charts.legendMarker"></div></div>
+                <div class="legend d-flex align-items-center" data-charts-target="labels">
+                  <div class="pr-3" data-charts-target="legendEntry"><div class="dygraph-legend-line" data-charts-target="legendMarker"></div></div>
                 </div>
             </div>
         </div>
