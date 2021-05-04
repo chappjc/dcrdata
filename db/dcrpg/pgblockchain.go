@@ -4170,7 +4170,7 @@ txns:
 			// successful get will delete the entry from the cache.
 			utxoData, ok := pgb.utxoCache.Get(vin.PrevTxHash, vin.PrevTxIndex)
 			if !ok {
-				log.Tracef("Data for that utxo (%s:%d) wasn't cached!", vin.PrevTxHash, vin.PrevTxIndex)
+				log.Debugf("Data for that utxo (%s:%d) wasn't cached!", vin.PrevTxHash, vin.PrevTxIndex)
 			}
 			numAddressRowsSet, voutDbID, mixedVout, err := insertSpendingAddressRow(dbTx,
 				vin.PrevTxHash, vin.PrevTxIndex, int8(vin.PrevTxTree),
@@ -4196,13 +4196,22 @@ txns:
 		// block or if the transaction is stake-invalidated. Spending
 		// information for extended side chain transaction outputs must still be
 		// done via addresses.matching_tx_hash.
-		if updateAddressesSpendingInfo && tx.IsValid && isMainchain {
+		if updateAddressesSpendingInfo && tx.IsValid && isMainchain && len(voutDbIDs) > 0 {
 			// Set spend_tx_row_id for each prevout consumed by this txn.
-			err = setSpendingForVouts(dbTx, voutDbIDs, txDbID)
-			if err != nil {
-				txRes.err = fmt.Errorf(`setSpendingForVouts: %v + %v (rollback)`,
-					err, dbTx.Rollback())
-				return txRes
+			if len(voutDbIDs) == 1 {
+				err = setSpendingForVout(dbTx, voutDbIDs[0], txDbID)
+				if err != nil {
+					txRes.err = fmt.Errorf(`setSpendingForVouts: %v + %v (rollback)`,
+						err, dbTx.Rollback())
+					return txRes
+				}
+			} else {
+				err = setSpendingForVouts(dbTx, voutDbIDs, txDbID)
+				if err != nil {
+					txRes.err = fmt.Errorf(`setSpendingForVouts: %v + %v (rollback)`,
+						err, dbTx.Rollback())
+					return txRes
+				}
 			}
 		}
 	}

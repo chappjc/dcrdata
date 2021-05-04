@@ -239,7 +239,7 @@ func _main(ctx context.Context) error {
 	// create them all after block sync.
 	if len(missingIndexes) > 0 {
 		newPGIndexes = true
-		updateAllAddresses = true
+		// updateAllAddresses = true
 		// Warn if this is not a fresh sync.
 		if chainDB.Height() > 0 {
 			log.Warnf("Some table indexes not found!")

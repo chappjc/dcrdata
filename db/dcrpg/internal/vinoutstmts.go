@@ -96,8 +96,6 @@ const (
 	SelectVinIDsALL = `SELECT id FROM vins;`
 	CountVinsRows   = `SELECT reltuples::BIGINT AS estimate FROM pg_class WHERE relname='vins';`
 
-	SetTxTypeOnVinsByVinIDs = `UPDATE vins SET tx_type=$1 WHERE id=$2;`
-
 	SelectSpendingTxsByPrevTx                = `SELECT id, tx_hash, tx_index, prev_tx_index FROM vins WHERE prev_tx_hash=$1;`
 	SelectSpendingTxsByPrevTxWithBlockHeight = `SELECT prev_tx_index, vins.tx_hash, vins.tx_index, block_height
 		FROM vins LEFT JOIN transactions ON

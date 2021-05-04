@@ -60,7 +60,7 @@ func (pgb *ChainDB) SyncChainDBAsync(ctx context.Context, res chan dbtypes.SyncR
 // newIndexes to true. The quit channel is used to break the sync loop. For
 // example, closing the channel on SIGINT.
 func (pgb *ChainDB) SyncChainDB(ctx context.Context, client rpcutils.MasterBlockGetter,
-	updateAllAddresses, newIndexes bool, updateExplorer chan *chainhash.Hash,
+	_, newIndexes bool, updateExplorer chan *chainhash.Hash,
 	barLoad chan *dbtypes.ProgressBarLoad) (int64, error) {
 	// Note that we are doing a batch blockchain sync.
 	pgb.InBatchSync = true
@@ -127,10 +127,10 @@ func (pgb *ChainDB) SyncChainDB(ctx context.Context, client rpcutils.MasterBlock
 			reindexing = true
 			log.Warnf("Forcing table reindexing.")
 		}
-		if !updateAllAddresses {
-			updateAllAddresses = true
-			log.Warnf("Forcing full update of spending information in addresses and vouts tables.")
-		}
+		// if !updateAllAddresses {
+		// 	updateAllAddresses = true
+		// 	log.Warnf("Forcing full update of spending information in addresses and vouts tables.")
+		// }
 	}
 
 	if reindexing {
@@ -159,6 +159,12 @@ func (pgb *ChainDB) SyncChainDB(ctx context.Context, client rpcutils.MasterBlock
 		// with the tables' constraints.
 		pgb.EnableDuplicateCheckOnInsert(true)
 	}
+
+	// Sync with addresses(tx_hash) index and update spending.
+	if err = IndexAddressTableOnTxHash(pgb.db); err != nil {
+		return lastBlock, err
+	}
+	updateAllAddresses := false // update while syncing, not at the end
 
 	log.Infof("Collecting all UTXO data prior to height %d...", lastBlock+1)
 	utxoFunc := RetrieveUTXOs
@@ -468,6 +474,8 @@ func (pgb *ChainDB) SyncChainDB(ctx context.Context, client rpcutils.MasterBlock
 			BarID: dbtypes.AddressesTableSync,
 		})
 
+		log.Debug("Dropping index on vouts.spend_tx_row_id during update...")
+		_ = DeindexVoutTableOnSpendTxID(pgb.db) // ignore error is the index is absent
 		N, err := updateSpendTxInfoInAllVouts(pgb.db)
 		if err != nil {
 			return nodeHeight, fmt.Errorf("UPDATE vouts.spend_tx_row_id error: %v", err)
