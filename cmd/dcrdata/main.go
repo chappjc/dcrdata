@@ -843,6 +843,10 @@ func _main(ctx context.Context) error {
 		requestShutdown()
 		return err
 	}
+	if newPGIndexes {
+		log.Infof("Initial chain DB sync complete. Now catching up with network...")
+		newPGIndexes = false // only the first time
+	}
 
 	// The sync routines may have lengthy tasks, such as table indexing, that
 	// follow main sync loop. Before enabling the chain monitors, again ensure
@@ -862,7 +866,6 @@ func _main(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("unable to get block from node: %v", err)
 			}
-			newPGIndexes = false // only the first time
 		}
 		app.Status.SetHeight(uint32(height))
 
@@ -964,16 +967,7 @@ func _main(ctx context.Context) error {
 		chainDB.InBatchSync = false
 		log.Infof("Successfully added %d blocks from %d side chains into dcrpg DB.",
 			sideChainBlocksStored, sideChainsStored)
-
-		// That may have taken a while, check again for new blocks from network.
-		if err = ensureSync(); err != nil {
-			return err
-		}
 	}
-
-	log.Infof("All ready, at height %d.", chainDBHeight)
-	explore.SetDBsSyncing(false)
-	psHub.SetReady(true)
 
 	// Pre-populate charts data using the dumped cache data in the .gob file path
 	// provided instead of querying the data from the dbs.
@@ -1100,6 +1094,10 @@ func _main(ctx context.Context) error {
 	if err = ensureSync(); err != nil {
 		return err
 	}
+
+	log.Infof("All ready, at height %d.", chainDBHeight)
+	explore.SetDBsSyncing(false)
+	psHub.SetReady(true)
 
 	// Set the current best block in the collection queue so that it can verify
 	// that subsequent blocks are in the correct sequence.
