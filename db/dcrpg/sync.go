@@ -21,7 +21,7 @@ const (
 	quickStatsTarget         = 250
 	deepStatsTarget          = 600
 	rescanLogBlockChunk      = 500
-	initialLoadSyncStatusMsg = "Syncing stake, base and auxiliary DBs..."
+	initialLoadSyncStatusMsg = "Syncing stake and chain DBs..."
 	addressesSyncStatusMsg   = "Syncing addresses table with spending info..."
 )
 
@@ -252,7 +252,7 @@ func (pgb *ChainDB) SyncChainDB(ctx context.Context, client rpcutils.MasterBlock
 		// Progress logging
 		if (ib-1)%rescanLogBlockChunk == 0 || ib == startHeight {
 			if ib == 0 {
-				log.Infof("Scanning genesis block into auxiliary chain db.")
+				log.Infof("Scanning genesis block into chain db.")
 			} else {
 				endRangeBlock := rescanLogBlockChunk * (1 + (ib-1)/rescanLogBlockChunk)
 				if endRangeBlock > nodeHeight {
