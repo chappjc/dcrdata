@@ -1017,70 +1017,6 @@ func retrieveAllAgendas(db *sql.DB) (map[string]dbtypes.MileStone, error) {
 	return currentMilestones, err
 }
 
-// RetrieveAllRevokes gets for all ticket revocations the row IDs (primary
-// keys), transaction hashes, block heights. It also gets the row ID in the vins
-// table for the first input of the revocation transaction, which should
-// correspond to the stakesubmission previous outpoint of the ticket purchase.
-// This function is used in UpdateSpendingInfoInAllTickets, so it should not be
-// subject to timeouts.
-func RetrieveAllRevokes(ctx context.Context, db *sql.DB) (ids []uint64, hashes []string, heights []int64, vinDbIDs []uint64, err error) {
-	var rows *sql.Rows
-	rows, err = db.QueryContext(ctx, internal.SelectAllRevokes)
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
-
-	defer closeRows(rows)
-
-	for rows.Next() {
-		var id, vinDbID uint64
-		var height int64
-		var hash string
-		err = rows.Scan(&id, &hash, &height, &vinDbID)
-		if err != nil {
-			return
-		}
-
-		ids = append(ids, id)
-		heights = append(heights, height)
-		hashes = append(hashes, hash)
-		vinDbIDs = append(vinDbIDs, vinDbID)
-	}
-	err = rows.Err()
-
-	return
-}
-
-// RetrieveAllVotesDbIDsHeightsTicketDbIDs gets for all votes the row IDs
-// (primary keys) in the votes table, the block heights, and the row IDs in the
-// tickets table of the spent tickets. This function is used in
-// UpdateSpendingInfoInAllTickets, so it should not be subject to timeouts.
-func RetrieveAllVotesDbIDsHeightsTicketDbIDs(ctx context.Context, db *sql.DB) (ids []uint64, heights []int64,
-	ticketDbIDs []uint64, err error) {
-	var rows *sql.Rows
-	rows, err = db.QueryContext(ctx, internal.SelectAllVoteDbIDsHeightsTicketDbIDs)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	defer closeRows(rows)
-
-	for rows.Next() {
-		var id, ticketDbID uint64
-		var height int64
-		err = rows.Scan(&id, &height, &ticketDbID)
-		if err != nil {
-			return
-		}
-
-		ids = append(ids, id)
-		heights = append(heights, height)
-		ticketDbIDs = append(ticketDbIDs, ticketDbID)
-	}
-	err = rows.Err()
-
-	return
-}
-
 // retrieveWindowBlocks fetches chunks of windows using the limit and offset provided
 // for a window size of chaincfg.Params.StakeDiffWindowSize.
 func retrieveWindowBlocks(ctx context.Context, db *sql.DB, windowSize, currentHeight int64, limit, offset uint64) ([]*dbtypes.BlocksGroupedInfo, error) {
@@ -2865,7 +2801,7 @@ func resetSpendingForVoutsByTxRowID(tx *sql.Tx, spendingTxRowIDs []int64) (int64
 // corresponding funding tx row.
 func InsertSpendingAddressRow(db *sql.DB, fundingTxHash string, fundingTxVoutIndex uint32, fundingTxTree int8,
 	spendingTxHash string, spendingTxVinIndex uint32, vinDbID uint64, utxoData *dbtypes.UTXOData,
-	checked, updateExisting, mainchain, valid bool, txType int16, updateFundingRow bool,
+	checked, updateExisting, mainchain, valid bool, txType int16,
 	spendingTXBlockTime dbtypes.TimeDef) (int64, uint64, bool, error) {
 	// Only allow atomic transactions to happen.
 	dbtx, err := db.Begin()
@@ -2875,7 +2811,7 @@ func InsertSpendingAddressRow(db *sql.DB, fundingTxHash string, fundingTxVoutInd
 
 	c, voutDbID, mixedOut, err := insertSpendingAddressRow(dbtx, fundingTxHash, fundingTxVoutIndex,
 		fundingTxTree, spendingTxHash, spendingTxVinIndex, vinDbID, utxoData, checked,
-		updateExisting, mainchain, valid, txType, updateFundingRow, spendingTXBlockTime)
+		updateExisting, mainchain, valid, txType, spendingTXBlockTime)
 	if err != nil {
 		return 0, 0, false, fmt.Errorf(`RowsAffected: %v + %v (rollback)`,
 			err, dbtx.Rollback())
@@ -2907,7 +2843,7 @@ func updateSpendTxInfoInAllVouts(db SqlExecutor) (int64, error) {
 func insertSpendingAddressRow(tx *sql.Tx, fundingTxHash string, fundingTxVoutIndex uint32,
 	fundingTxTree int8, spendingTxHash string, spendingTxVinIndex uint32, vinDbID uint64,
 	spentUtxoData *dbtypes.UTXOData, checked, updateExisting, mainchain, valid bool, txType int16,
-	updateFundingRow bool, blockT ...dbtypes.TimeDef) (int64, uint64, bool, error) {
+	blockT ...dbtypes.TimeDef) (int64, uint64, bool, error) {
 
 	// Select addresses and value from the matching funding tx output. A maximum
 	// of one row and a minimum of none are expected.
@@ -2966,7 +2902,7 @@ func insertSpendingAddressRow(tx *sql.Tx, fundingTxHash string, fundingTxVoutInd
 		}
 	}
 
-	if updateFundingRow && valid {
+	if valid {
 		// Update the matching funding addresses row with the spending info. If
 		// the spending transaction is side chain, so must be the funding tx to
 		// update it. (Similarly for mainchain, but a mainchain block always has

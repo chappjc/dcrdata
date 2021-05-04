@@ -22,9 +22,6 @@ type ChainMonitor struct {
 
 // NewChainMonitor creates a new ChainMonitor.
 func (pgb *ChainDB) NewChainMonitor(ctx context.Context) *ChainMonitor {
-	if pgb == nil {
-		return nil
-	}
 	return &ChainMonitor{
 		ctx: ctx, // usage is TODO
 		db:  pgb,
@@ -107,8 +104,7 @@ func (p *ChainMonitor) switchToSideChain(reorgData *txhelpers.ReorgData) (int32,
 		// also considered valid unless invalidated by the next block
 		// (invalidation of previous handled inside StoreBlock).
 		isValid, isMainChain, updateExisting := true, true, true
-		_, _, _, err = p.db.StoreBlock(msgBlock, isValid, isMainChain,
-			updateExisting, true, true, chainWork)
+		_, _, _, err = p.db.StoreBlock(msgBlock, isValid, isMainChain, updateExisting, chainWork)
 		if err != nil {
 			return int32(p.db.bestBlock.Height()), p.db.bestBlock.Hash(),
 				fmt.Errorf("error connecting block %v", newChain[i])

@@ -175,7 +175,7 @@ func _main(ctx context.Context) error {
 	}
 
 	// Auxiliary DB (PostgreSQL)
-	var newPGIndexes, updateAllAddresses bool
+	var newPGIndexes bool
 	pgHost, pgPort := cfg.PGHost, ""
 	if !strings.HasPrefix(pgHost, "/") {
 		pgHost, pgPort, err = net.SplitHostPort(cfg.PGHost)
@@ -239,7 +239,6 @@ func _main(ctx context.Context) error {
 	// create them all after block sync.
 	if len(missingIndexes) > 0 {
 		newPGIndexes = true
-		// updateAllAddresses = true
 		// Warn if this is not a fresh sync.
 		if chainDB.Height() > 0 {
 			log.Warnf("Some table indexes not found!")
@@ -284,11 +283,11 @@ func _main(ctx context.Context) error {
 	if auxHeight > -1 {
 		orphaned, err := rpcutils.OrphanedTipLength(ctx, dcrdClient, auxHeight, chainDB.BlockHash)
 		if err != nil {
-			return fmt.Errorf("Failed to compare tip blocks for the aux DB: %v", err)
+			return fmt.Errorf("Failed to compare tip blocks for the DB: %v", err)
 		}
 		if int(orphaned) > blocksToPurge {
 			blocksToPurge = int(orphaned)
-			log.Infof("Orphaned tip detected on aux DB. Purging %d blocks", blocksToPurge)
+			log.Infof("Orphaned tip detected in DB. Purging %d blocks", blocksToPurge)
 		}
 	}
 
@@ -323,7 +322,7 @@ func _main(ctx context.Context) error {
 		} // otherwise likely sql.ErrNoRows (heightDB was already -1)
 	}
 
-	// Get the last block added to the aux DB.
+	// Get the last block added to the DB.
 	lastBlockPG, err := chainDB.HeightDB()
 	if err != nil {
 		return fmt.Errorf("Unable to get height from PostgreSQL DB: %v", err)
@@ -338,11 +337,11 @@ func _main(ctx context.Context) error {
 	charts := cache.NewChartData(ctx, uint32(heightDB), activeChain)
 	chainDB.RegisterCharts(charts)
 
-	// Aux DB height and stakedb height must be equal. StakeDatabase will
-	// catch up automatically if it is behind, but we must rewind it here if
-	// it is ahead of chainDB. For chainDB to receive notification from
-	// StakeDatabase when the required blocks are connected, the
-	// StakeDatabase must be at the same height or lower than chainDB.
+	// DB height and stakedb height must be equal. StakeDatabase will catch up
+	// automatically if it is behind, but we must rewind it here if it is ahead
+	// of chainDB. For chainDB to receive notification from StakeDatabase when
+	// the required blocks are connected, the StakeDatabase must be at the same
+	// height or lower than chainDB.
 	stakeDBHeight = int64(stakeDB.Height())
 	if stakeDBHeight > heightDB {
 		// Have chainDB rewind it's the StakeDatabase. stakeDBHeight is
@@ -556,7 +555,7 @@ func _main(ctx context.Context) error {
 		return fmt.Errorf("NewMempoolMonitor: %v", err)
 	}
 
-	// Use the MempoolMonitor in aux DB to get unconfirmed transaction data.
+	// Use the MempoolMonitor in DB to get unconfirmed transaction data.
 	chainDB.UseMempoolChecker(mpm)
 
 	// Prepare for sync by setting up the channels for status/progress updates
@@ -574,8 +573,8 @@ func _main(ctx context.Context) error {
 
 	// Display the blockchain syncing status page if the number of blocks behind
 	// the node's best block height are more than the set limit. The sync status
-	// page should also be displayed when updateAllAddresses and newPGIndexes
-	// are true, indicating maintenance or an initial sync.
+	// page should also be displayed when newPGIndexes is true, indicating
+	// maintenance or an initial sync.
 	nodeHeight, chainDBHeight, err := Heights()
 
 	if err != nil {
@@ -584,7 +583,7 @@ func _main(ctx context.Context) error {
 	blocksBehind = nodeHeight - chainDBHeight
 	log.Debugf("dbHeight: %d / blocksBehind: %d", chainDBHeight, blocksBehind)
 	displaySyncStatusPage := blocksBehind > int64(cfg.SyncStatusLimit) || // over limit
-		updateAllAddresses || newPGIndexes // maintenance or initial sync
+		newPGIndexes // maintenance or initial sync
 
 	// Initiate the sync status monitor and the coordinating goroutines if the
 	// sync status is activated, otherwise coordinate updating the full set of
@@ -806,7 +805,7 @@ func _main(ctx context.Context) error {
 	// Coordinate the sync of both sqlite and auxiliary DBs with the network.
 	// This closure captures the RPC client and the quit channel.
 	// sqlite has been dropped, and this can probably be simplified.
-	getSyncd := func(updateAddys, newPGInds bool) (int64, error) {
+	getSyncd := func() (int64, error) {
 		// Simultaneously synchronize the ChainDB (PostgreSQL) and the
 		// stake info DB. Results are returned over channels:
 		pgSyncRes := make(chan dbtypes.SyncResult)
@@ -834,50 +833,47 @@ func _main(ctx context.Context) error {
 		// StakeDatabase at the best block's height. For a detailed description
 		// on how the DBs' synchronization is coordinated, see the documents in
 		// db/dcrpg/sync.go.
-		go chainDB.SyncChainDBAsync(ctx, pgSyncRes, smartClient, updateAddys,
-			newPGInds, latestBlockHash, barLoad)
+		go chainDB.SyncChainDBAsync(ctx, pgSyncRes, smartClient,
+			newPGIndexes, latestBlockHash, barLoad)
 
 		// Wait for the results from both of these DBs.
 		return waitForSync(ctx, pgSyncRes)
 	}
 
-	chainDBHeight, err = getSyncd(updateAllAddresses, newPGIndexes)
+	// Regardless of chainDBHeight, must run SyncChainDB once to ready chain DB.
+	// This should change (e.g. utxo cache warming elsewhere, etc.).
+	chainDBHeight, err = getSyncd()
 	if err != nil {
 		requestShutdown()
 		return err
 	}
 
-	// After sync and indexing, must use upsert statement, which checks for
-	// duplicate entries and updates instead of erroring. SyncChainDB should
-	// set this on successful sync, but do it again anyway.
-	chainDB.EnableDuplicateCheckOnInsert(true)
-
 	// The sync routines may have lengthy tasks, such as table indexing, that
 	// follow main sync loop. Before enabling the chain monitors, again ensure
 	// the DBs are at the node's best block.
 	ensureSync := func() error {
-		newPGIndexes, updateAllAddresses = false, false
 		_, height, err := dcrdClient.GetBestBlock(ctx)
 		if err != nil {
 			return fmt.Errorf("unable to get block from node: %v", err)
 		}
 
 		for chainDBHeight < height {
-			chainDBHeight, err = getSyncd(updateAllAddresses, newPGIndexes)
+			chainDBHeight, err = getSyncd()
 			if err != nil {
-				requestShutdown()
 				return err
 			}
 			_, height, err = dcrdClient.GetBestBlock(ctx)
 			if err != nil {
 				return fmt.Errorf("unable to get block from node: %v", err)
 			}
+			newPGIndexes = false // only the first time
 		}
 		app.Status.SetHeight(uint32(height))
 
 		return nil
 	}
 	if err = ensureSync(); err != nil {
+		requestShutdown()
 		return err
 	}
 
@@ -888,16 +884,14 @@ func _main(ctx context.Context) error {
 		return nil
 	}
 
-	log.Info("Mainchain sync complete.")
-
 	// Ensure all side chains known by dcrd are also present in the auxiliary DB
 	// and import them if they are not already there.
 	if cfg.ImportSideChains {
 		// First identify the side chain blocks that are missing from the DB.
-		log.Info("Aux DB -> Retrieving side chain blocks from dcrd...")
+		log.Info("Retrieving side chain blocks from dcrd...")
 		sideChainBlocksToStore, nSideChainBlocks, err := chainDB.MissingSideChainBlocks()
 		if err != nil {
-			return fmt.Errorf("Aux DB -> Unable to determine missing side chain blocks: %v", err)
+			return fmt.Errorf("Unable to determine missing side chain blocks: %v", err)
 		}
 		nSideChains := len(sideChainBlocksToStore)
 
@@ -906,7 +900,7 @@ func _main(ctx context.Context) error {
 		// side chain blocks to get ticket pool info.
 
 		// Collect and store data for each side chain.
-		log.Infof("Aux DB -> Importing %d new block(s) from %d known side chains...",
+		log.Infof("Importing %d new block(s) from %d known side chains...",
 			nSideChainBlocks, nSideChains)
 		// Disable recomputing project fund balance, and clearing address
 		// balance and counts cache.
@@ -925,7 +919,7 @@ func _main(ctx context.Context) error {
 				// Validate the block hash.
 				blockHash, err := chainhash.NewHashFromStr(hash)
 				if err != nil {
-					log.Errorf("Aux DB -> Invalid block hash %s: %v.", hash, err)
+					log.Errorf("Invalid block hash %s: %v.", hash, err)
 					continue
 				}
 
@@ -933,7 +927,7 @@ func _main(ctx context.Context) error {
 				_, msgBlock, err := collector.CollectHash(blockHash)
 				if err != nil {
 					// Do not quit if unable to collect side chain block data.
-					log.Errorf("Aux DB -> Unable to collect data for side chain block %s: %v.",
+					log.Errorf("Unable to collect data for side chain block %s: %v.",
 						hash, err)
 					continue
 				}
@@ -945,8 +939,8 @@ func _main(ctx context.Context) error {
 					continue
 				}
 
-				// PostgreSQL / aux DB
-				log.Debugf("Aux DB -> Importing block %s (height %d) into aux DB.",
+				// Main DB
+				log.Debugf("Importing block %s (height %d) into the DB.",
 					blockHash, msgBlock.Header.Height)
 
 				// Stake invalidation is always handled by subsequent block, so
@@ -961,11 +955,11 @@ func _main(ctx context.Context) error {
 
 				// Store data in the aux (dcrpg) DB.
 				_, _, _, err = chainDB.StoreBlock(msgBlock, isValid, isMainchain,
-					updateExistingRecords, true, true, chainWork)
+					updateExistingRecords, chainWork)
 				if err != nil {
 					// If data collection succeeded, but storage fails, bail out
 					// to diagnose the DB trouble.
-					return fmt.Errorf("Aux DB -> ChainDB.StoreBlock failed: %v", err)
+					return fmt.Errorf("ChainDB.StoreBlock failed: %v", err)
 				}
 
 				sideChainBlocksStored++
@@ -1083,11 +1077,8 @@ func _main(ctx context.Context) error {
 	// Blockchain monitor for the stake DB
 	sdbChainMonitor := stakeDB.NewChainMonitor(ctx)
 
-	// Blockchain monitor for the aux (PG) DB
+	// Blockchain monitor for the main DB
 	chainDBChainMonitor := chainDB.NewChainMonitor(ctx)
-	if chainDBChainMonitor == nil {
-		return fmt.Errorf("Failed to enable dcrpg ChainMonitor. *ChainDB is nil.")
-	}
 
 	// Initial data summary for web ui. stakedb must be at the same height, so
 	// we do this before starting the monitors.
