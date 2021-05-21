@@ -724,6 +724,9 @@ func (c *appContext) getTxSwapsInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// tx, _ := c.nodeClient.GetRawTransaction(r.Context(), txid)
+	// tx.MsgTx()
+
 	// Check if tx is a stake tree tx or coinbase tx and return empty swap info.
 	var isStakeOrCoinbaseTx bool
 	for _, input := range rawtx.Vin {
