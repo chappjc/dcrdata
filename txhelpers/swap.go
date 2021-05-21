@@ -67,17 +67,19 @@ const (
 // describing the identity of the redeemer.
 // Returns an empty contract script and nil error if the provided script does not
 // redeem a contract. Returns a non-nil error if the script could not be parsed.
-func ExtractSwapDataFromInputScriptHex(inputScriptHex string, params *chaincfg.Params) (*AtomicSwapContractPushes, []byte, SwapRedeemer, error) {
+func ExtractSwapDataFromInputScriptHex(inputScriptHex string, params *chaincfg.Params) (*AtomicSwapContractPushes,
+	[]byte, []byte, SwapRedeemer, error) {
 	inputScript, err := hex.DecodeString(inputScriptHex)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("error decoding txin script: %v", err)
+		return nil, nil, nil, "", fmt.Errorf("error decoding txin script: %v", err)
 	}
 	return ExtractSwapDataFromInputScript(inputScript, params)
 }
 
-func ExtractSwapDataFromInputScript(inputScript []byte, params *chaincfg.Params) (*AtomicSwapContractPushes, []byte, SwapRedeemer, error) {
+func ExtractSwapDataFromInputScript(inputScript []byte, params *chaincfg.Params) (*AtomicSwapContractPushes,
+	[]byte, []byte, SwapRedeemer, error) {
 	var redeemerOpCode byte
-	var contract []byte
+	var contract, secret []byte
 
 	const scriptVersion = 0
 	tokenizer := txscript.MakeScriptTokenizer(scriptVersion, inputScript)
@@ -96,25 +98,30 @@ func ExtractSwapDataFromInputScript(inputScript []byte, params *chaincfg.Params)
 			break // last data in a valid contract redemption script
 		}
 
+		// secret is token 2
+		if tokenIndex == 2 && tokenizer.Data() != nil {
+			secret = tokenizer.Data()
+		}
+
 		tokenIndex++
 	}
 	if err := tokenizer.Err(); err != nil {
-		return nil, nil, "", fmt.Errorf("error parsing input script: %v", err)
+		return nil, nil, nil, "", fmt.Errorf("error parsing input script: %v", err)
 	}
 
 	if contract == nil || !tokenizer.Done() {
 		// script should contain contract as the last data
 		// if contract has been extracted, tokenizer.Done() should be true
-		return nil, nil, "", nil
+		return nil, nil, nil, "", nil
 	}
 
 	// validate the contract script by attempting to parse it for contract info.
 	contractData, err := ParseAtomicSwapContract(contract, params)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, nil, "", err
 	}
 	if contractData == nil {
-		return nil, nil, "", nil // not a contract script
+		return nil, nil, nil, "", nil // not a contract script
 	}
 
 	swapRedeemer := AtomicSwapUnknownEntity
@@ -124,7 +131,7 @@ func ExtractSwapDataFromInputScript(inputScript []byte, params *chaincfg.Params)
 		swapRedeemer = AtomicSwapParticipant
 	}
 
-	return contractData, contract, swapRedeemer, nil
+	return contractData, contract, secret, swapRedeemer, nil
 }
 
 // ParseAtomicSwapContract checks if the provided script is an atomic swap
@@ -183,7 +190,7 @@ func CheckTxInputForSwapInfo(txraw *chainjson.TxRawResult, inputIndex uint32, pa
 		return nil, nil
 	}
 
-	contractData, contractScript, redeemer, err := ExtractSwapDataFromInputScriptHex(input.ScriptSig.Hex, params)
+	contractData, contractScript, _ /* secret */, redeemer, err := ExtractSwapDataFromInputScriptHex(input.ScriptSig.Hex, params)
 	if contractData == nil || err != nil {
 		return nil, err
 	}
@@ -294,11 +301,15 @@ type OutputSpenderTxOut struct {
 }
 
 type AtomicSwapData struct {
+	PrevTx           *chainhash.Hash
+	PrevVout         uint32
+	Value            int64
 	ContractAddress  string
 	RecipientAddress string
 	RefundAddress    string
 	Locktime         int64
 	SecretHash       [32]byte
+	Secret           []byte
 	Contract         []byte
 	Redeemer         SwapRedeemer
 }
@@ -330,27 +341,29 @@ func MsgTxAtomicSwapsInfo(msgTx *wire.MsgTx, outputSpenders map[uint32]*OutputSp
 	}
 
 	appendFound := func(found string) {
+		if txSwaps.Found == "" {
+			txSwaps.Found = found
+			return
+		}
 		if strings.Contains(txSwaps.Found, found) {
 			return
 		}
-		if txSwaps.Found == "" {
-			txSwaps.Found = found
-		} else {
-			txSwaps.Found = fmt.Sprintf("%s, %s", txSwaps.Found, found)
-		}
+		txSwaps.Found = fmt.Sprintf("%s, %s", txSwaps.Found, found)
 	}
 
 	// Check if any of this tx's outputs are contracts. Requires the output to
 	// be spent AND the spending input to have the correct sigscript type.
 	for i, vout := range msgTx.TxOut {
 		scriptClass := txscript.GetScriptClass(vout.Version, vout.PkScript, treasuryEnabled)
-		if scriptClass != txscript.ScriptHashTy {
-			continue // non-p2sh outputs cannot currently be contracts
-		}
 		spender, spent := outputSpenders[uint32(i)]
 		if !spent {
 			continue // output must be spent to determine if it is a contract
 		}
+
+		if scriptClass != txscript.ScriptHashTy {
+			continue // non-p2sh outputs cannot currently be contracts
+		}
+
 		// Sanity check that the provided `spender` actually spends this output.
 		if len(spender.Tx.TxIn) <= int(spender.Vin) {
 			fmt.Println("invalid:", spender.Vin)
@@ -361,7 +374,7 @@ func MsgTxAtomicSwapsInfo(msgTx *wire.MsgTx, outputSpenders map[uint32]*OutputSp
 				hash, i, spender.Tx.TxHash())
 		}
 		// Use the spending tx input script to retrieve swap details.
-		contractData, contractScript, swapRedeemer, err :=
+		contractData, contractScript, secret, swapRedeemer, err :=
 			ExtractSwapDataFromInputScript(spendingVin.SignatureScript, params)
 		if err != nil {
 			return nil, fmt.Errorf("error checking if tx output is a contract: %v", err)
@@ -369,11 +382,13 @@ func MsgTxAtomicSwapsInfo(msgTx *wire.MsgTx, outputSpenders map[uint32]*OutputSp
 		if contractData != nil {
 			appendFound("Contract")
 			txSwaps.Contracts[uint32(i)] = &AtomicSwapData{
+				Value:            vout.Value,
 				ContractAddress:  contractData.ContractAddress.String(),
 				RecipientAddress: contractData.RecipientAddress.String(),
 				RefundAddress:    contractData.RefundAddress.String(),
 				Locktime:         contractData.Locktime,
 				SecretHash:       contractData.SecretHash,
+				Secret:           secret,
 				Contract:         contractScript,
 				Redeemer:         swapRedeemer,
 			}
@@ -383,7 +398,7 @@ func MsgTxAtomicSwapsInfo(msgTx *wire.MsgTx, outputSpenders map[uint32]*OutputSp
 	// Check if any of this tx's inputs are redeems or refunds, i.e. inputs that
 	// spend the output of an atomic swap contract.
 	for i, vin := range msgTx.TxIn {
-		contractData, contractScript, swapRedeemer, err :=
+		contractData, contractScript, secret, swapRedeemer, err :=
 			ExtractSwapDataFromInputScript(vin.SignatureScript, params)
 		if err != nil {
 			return nil, fmt.Errorf("error checking if input redeems a contract: %v", err)
@@ -392,11 +407,15 @@ func MsgTxAtomicSwapsInfo(msgTx *wire.MsgTx, outputSpenders map[uint32]*OutputSp
 			continue
 		}
 		swapInfo := &AtomicSwapData{
+			PrevTx:           &vin.PreviousOutPoint.Hash,
+			PrevVout:         vin.PreviousOutPoint.Index,
+			Value:            vin.ValueIn,
 			ContractAddress:  contractData.ContractAddress.String(),
 			RecipientAddress: contractData.RecipientAddress.String(),
 			RefundAddress:    contractData.RefundAddress.String(),
 			Locktime:         contractData.Locktime,
 			SecretHash:       contractData.SecretHash,
+			Secret:           secret,
 			Contract:         contractScript,
 			Redeemer:         swapRedeemer,
 		}
