@@ -2808,6 +2808,10 @@ func setSpendingForVout(tx *sql.Tx, fundVoutRowID int64, spendTxRowID uint64) er
 }
 
 func setSpendingForVouts(tx *sql.Tx, fundVoutRowIDs []int64, spendTxRowID uint64) error {
+	if len(fundVoutRowIDs) == 1 {
+		return setSpendingForVout(tx, fundVoutRowIDs[0], spendTxRowID)
+	}
+
 	res, err := tx.Exec(internal.UpdateVoutsSpendTxRowID, spendTxRowID, pq.Int64Array(fundVoutRowIDs))
 	if err != nil || res == nil {
 		return err
@@ -3032,6 +3036,11 @@ func retrieveTotalAgendaVotesCount(ctx context.Context, db *sql.DB, agendaID str
 		votingDoneHeight).Scan(&yes, &abstain, &no, &total)
 
 	return
+}
+
+// --- atomic swap tables
+
+func InsertSwap(db *sql.DB, spendHash chainhash.Hash, vin uint32, swapInfo *txhelpers.AtomicSwapData) {
 }
 
 // --- transactions table ---

@@ -4264,26 +4264,38 @@ txns:
 			}
 		}
 
+		if !isStake {
+			for vin, tx := range msgBlock.Transactions[1:] {
+				swapTxns, err := txhelpers.MsgTxAtomicSwapsInfo(tx, nil, pgb.chainParams, false)
+				if err != nil {
+					log.Errorf("MsgTxAtomicSwapsInfo: %v", err)
+					continue
+				}
+				for _, red := range swapTxns.Redemptions {
+					InsertSwap(pgb.db, tx.TxHash(), uint32(vin+1), red)
+					// Insert redemption data: tx:vin, value, contract tx:vout, secret
+					// tx.TxHash().String(), vin, red.Value, red.PrevTx, red.PrevVout, red.Secret
+
+					// Insert contract data: tx:vout, p2sh addr, value, secret hash, locktime
+					// red.PrevTx, red.PrevVout, red.ContractAddress, red.Value, red.SecretHash, red.Locktime
+				}
+				for _, ref := range swapTxns.Refunds {
+					// Insert
+				}
+			}
+		}
+
 		// NOTE: vouts.spend_tx_row_id is not updated if this is a side chain
 		// block or if the transaction is stake-invalidated. Spending
 		// information for extended side chain transaction outputs must still be
 		// done via addresses.matching_tx_hash.
 		if updateAddressesSpendingInfo && tx.IsValid && isMainchain && len(voutDbIDs) > 0 {
 			// Set spend_tx_row_id for each prevout consumed by this txn.
-			if len(voutDbIDs) == 1 {
-				err = setSpendingForVout(dbTx, voutDbIDs[0], txDbID)
-				if err != nil {
-					txRes.err = fmt.Errorf(`setSpendingForVouts: %v + %v (rollback)`,
-						err, dbTx.Rollback())
-					return txRes
-				}
-			} else {
-				err = setSpendingForVouts(dbTx, voutDbIDs, txDbID)
-				if err != nil {
-					txRes.err = fmt.Errorf(`setSpendingForVouts: %v + %v (rollback)`,
-						err, dbTx.Rollback())
-					return txRes
-				}
+			err = setSpendingForVouts(dbTx, voutDbIDs, txDbID)
+			if err != nil {
+				txRes.err = fmt.Errorf(`setSpendingForVouts: %v + %v (rollback)`,
+					err, dbTx.Rollback())
+				return txRes
 			}
 		}
 	}
