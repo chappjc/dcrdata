@@ -1,3 +1,6 @@
+// Copyright (c) 2021, The Decred developers
+// See LICENSE for details.
+
 package main
 
 import (
@@ -114,7 +117,7 @@ func mainCore() int {
 			}
 			for vin, red := range swapRes.Redemptions {
 				fmt.Fprintf(outw, "Redeem (%s:%d): %v from contract output %v:%d\n",
-					tx.TxHash(), vin, dcrutil.Amount(red.Value), red.PrevTx, red.PrevVout)
+					red.SpendTx, red.SpendVin, dcrutil.Amount(red.Value), red.ContractTx, red.ContractVout)
 
 				// redeem tx, redeem vin, amt, contract tx, contract vout
 				err = csvwriter.Write([]string{
@@ -123,8 +126,8 @@ func mainCore() int {
 					tx.TxHash().String(),
 					strconv.FormatInt(int64(vin), 10),
 					strconv.FormatFloat(dcrutil.Amount(red.Value).ToCoin(), 'f', -1, 64),
-					red.PrevTx.String(),
-					strconv.FormatInt(int64(red.PrevVout), 10),
+					red.ContractTx.String(),
+					strconv.FormatInt(int64(red.ContractVout), 10),
 					hex.EncodeToString(red.Secret),
 				})
 				if err != nil {
@@ -134,7 +137,7 @@ func mainCore() int {
 			}
 			for vin, ref := range swapRes.Refunds {
 				fmt.Fprintf(outw, "Refund (%s:%d): %v from contract output %v:%d\n",
-					tx.TxHash(), vin, dcrutil.Amount(ref.Value), ref.PrevTx, ref.PrevVout)
+					ref.SpendTx, ref.SpendVin, dcrutil.Amount(ref.Value), ref.ContractTx, ref.ContractVout)
 
 				err = csvwriter.Write([]string{
 					strconv.FormatInt(i, 10),
@@ -142,8 +145,8 @@ func mainCore() int {
 					tx.TxHash().String(),
 					strconv.FormatInt(int64(vin), 10),
 					strconv.FormatFloat(dcrutil.Amount(ref.Value).ToCoin(), 'f', -1, 64),
-					ref.PrevTx.String(),
-					strconv.FormatInt(int64(ref.PrevVout), 10),
+					ref.ContractTx.String(),
+					strconv.FormatInt(int64(ref.ContractVout), 10),
 					"", // no secret with a refund
 				})
 				if err != nil {

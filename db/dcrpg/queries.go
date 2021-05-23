@@ -3040,7 +3040,12 @@ func retrieveTotalAgendaVotesCount(ctx context.Context, db *sql.DB, agendaID str
 
 // --- atomic swap tables
 
-func InsertSwap(db *sql.DB, spendHash chainhash.Hash, vin uint32, swapInfo *txhelpers.AtomicSwapData) {
+func InsertSwap(db SqlExecutor, spendHeight int64, swapInfo *txhelpers.AtomicSwapData) error {
+	_, err := db.Exec(internal.InsertContractSpend, swapInfo.ContractTx.String(), swapInfo.ContractVout,
+		swapInfo.SpendTx.String(), swapInfo.SpendVin, spendHeight,
+		swapInfo.ContractAddress, swapInfo.Value,
+		swapInfo.SecretHash[:], swapInfo.Secret, swapInfo.Locktime)
+	return err
 }
 
 // --- transactions table ---

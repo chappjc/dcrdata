@@ -585,7 +585,7 @@ func NewChainDB(ctx context.Context, cfg *ChainDBCfg, stakeDB *stakedb.StakeData
 		}
 		// Do upgrades required by meta table versioning.
 		log.Infof("DB schema version %v upgrading to version %v", dbVer, targetDatabaseVersion)
-		upgrader := NewUpgrader(ctx, db, client, stakeDB)
+		upgrader := NewUpgrader(ctx, params, db, client, stakeDB)
 		success, err := upgrader.UpgradeDatabase()
 		if err != nil {
 			return nil, fmt.Errorf("failed to upgrade database: %v", err)
@@ -4265,22 +4265,28 @@ txns:
 		}
 
 		if !isStake {
-			for vin, tx := range msgBlock.Transactions[1:] {
+			for _, tx := range msgBlock.Transactions[1:] { // skip the coinbase
+				// This will only identify the redeem and refund txns, unlike
+				// the use of TxAtomicSwapsInfo in API and explorer calls.
 				swapTxns, err := txhelpers.MsgTxAtomicSwapsInfo(tx, nil, pgb.chainParams, false)
 				if err != nil {
-					log.Errorf("MsgTxAtomicSwapsInfo: %v", err)
+					log.Warnf("MsgTxAtomicSwapsInfo: %v", err)
+					continue
+				}
+				if swapTxns.Found == "" {
 					continue
 				}
 				for _, red := range swapTxns.Redemptions {
-					InsertSwap(pgb.db, tx.TxHash(), uint32(vin+1), red)
-					// Insert redemption data: tx:vin, value, contract tx:vout, secret
-					// tx.TxHash().String(), vin, red.Value, red.PrevTx, red.PrevVout, red.Secret
-
-					// Insert contract data: tx:vout, p2sh addr, value, secret hash, locktime
-					// red.PrevTx, red.PrevVout, red.ContractAddress, red.Value, red.SecretHash, red.Locktime
+					err = InsertSwap(pgb.db, height, red)
+					if err != nil {
+						log.Errorf("InsertSwap: %v", err)
+					}
 				}
 				for _, ref := range swapTxns.Refunds {
-					// Insert
+					err = InsertSwap(pgb.db, height, ref)
+					if err != nil {
+						log.Errorf("InsertSwap: %v", err)
+					}
 				}
 			}
 		}

@@ -1,18 +1,21 @@
+// Copyright (c) 2021, The Decred developers
+// See LICENSE for details.
+
 package txhelpers
 
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/wire"
 	"strings"
 	"time"
 
+	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/chaincfg/v3"
 	"github.com/decred/dcrd/dcrec"
 	"github.com/decred/dcrd/dcrutil/v3"
 	chainjson "github.com/decred/dcrd/rpc/jsonrpc/types/v2"
 	"github.com/decred/dcrd/txscript/v3"
+	"github.com/decred/dcrd/wire"
 )
 
 // AtomicSwapContractPushes models the data pushes of an atomic swap contract.
@@ -75,31 +78,47 @@ func ExtractSwapDataFromInputScript(inputScript []byte, params *chaincfg.Params)
 	tokenizer := txscript.MakeScriptTokenizer(scriptVersion, inputScript)
 	var tokenIndex = 0
 	for tokenizer.Next() {
-		// token at index 2 or 3 should hold the redeemer opcode
-		// if there's no data at any of those indices
-		if (tokenIndex == 2 || tokenIndex == 3) && tokenizer.Data() == nil {
+		if tokenIndex < 2 { // 0 is sig, 1 is pk
+			tokenIndex++
+			continue
+		}
+		if tokenIndex > 4 { // swap redeem sigScripts max 5 pushes, refunds are max 4
+			break
+		}
+
+		data := tokenizer.Data()
+
+		// Token at index 2 or 3 holds the branch opcode (2 for refunds where
+		// there is no secret push, 3 for redeems).
+		if (tokenIndex == 2 || tokenIndex == 3) && data == nil {
 			switch b := tokenizer.Opcode(); b {
-			case txscript.OP_TRUE:
+			case txscript.OP_TRUE: // tokenIndex == 3
 			case txscript.OP_FALSE:
-				refund = true
+				refund = true // tokenIndex == 2
 			default:
-				return nil, nil, nil, false, fmt.Errorf("invalid branch OPCODE %v", b)
+				// Actually, OP_IF means (not False), so this should be alright, but odd...
+				fmt.Printf("opcode %d instead of OP_TRUE or OP_FALSE\n", b)
+				return nil, nil, nil, false, nil /// fmt.Errorf("invalid branch OPCODE %v", b)
 			}
+
+			tokenIndex++
+			continue
+		}
+
+		// Secret is token 2 for redeems.
+		if tokenIndex == 2 && data != nil {
+			secret = data
+			tokenIndex++
+			continue
 		}
 
 		// token at index 3 or 4 should hold the contract
 		// if there IS data at any of those indices
-		if (tokenIndex == 3 || tokenIndex == 4) && tokenizer.Data() != nil {
-			contract = tokenizer.Data()
-			break // last data in a valid contract redemption script
+		if (tokenIndex == 3 || tokenIndex == 4) && data != nil {
+			contract = data // last data in a valid contract redemption script
 		}
 
-		// secret is token 2
-		if tokenIndex == 2 && tokenizer.Data() != nil {
-			secret = tokenizer.Data()
-		}
-
-		tokenIndex++
+		break // bail out below if contract == nil or there were more opcodes
 	}
 	if err := tokenizer.Err(); err != nil {
 		return nil, nil, nil, false, fmt.Errorf("error parsing input script: %v", err)
@@ -151,7 +170,7 @@ func ParseAtomicSwapContract(script []byte, params *chaincfg.Params) (*AtomicSwa
 
 	var formattedLockTime string
 	if contractDataPushes.LockTime >= int64(txscript.LockTimeThreshold) {
-		formattedLockTime = time.Unix(contractDataPushes.LockTime, 0).Format("2006-01-02 15:04:05 (MST)")
+		formattedLockTime = time.Unix(contractDataPushes.LockTime, 0).UTC().Format("2006-01-02 15:04:05 (MST)")
 	} else {
 		formattedLockTime = fmt.Sprintf("block %v", contractDataPushes.LockTime)
 	}
@@ -291,8 +310,10 @@ type OutputSpenderTxOut struct {
 }
 
 type AtomicSwapData struct {
-	PrevTx           *chainhash.Hash // only set for refund/redeem (spend)
-	PrevVout         uint32
+	ContractTx       *chainhash.Hash
+	ContractVout     uint32
+	SpendTx          *chainhash.Hash
+	SpendVin         uint32
 	Value            int64
 	ContractAddress  string
 	RecipientAddress string
@@ -344,15 +365,17 @@ func MsgTxAtomicSwapsInfo(msgTx *wire.MsgTx, outputSpenders map[uint32]*OutputSp
 	// Check if any of this tx's outputs are contracts. Requires the output to
 	// be spent AND the spending input to have the correct sigscript type.
 	for i, vout := range msgTx.TxOut {
-		scriptClass := txscript.GetScriptClass(vout.Version, vout.PkScript, treasuryEnabled)
 		spender, spent := outputSpenders[uint32(i)]
 		if !spent {
 			continue // output must be spent to determine if it is a contract
 		}
 
+		scriptClass := txscript.GetScriptClass(vout.Version, vout.PkScript, treasuryEnabled)
 		if scriptClass != txscript.ScriptHashTy {
 			continue // non-p2sh outputs cannot currently be contracts
 		}
+
+		spendHash := spender.Tx.TxHash()
 
 		// Sanity check that the provided `spender` actually spends this output.
 		if len(spender.Tx.TxIn) <= int(spender.Vin) {
@@ -361,7 +384,7 @@ func MsgTxAtomicSwapsInfo(msgTx *wire.MsgTx, outputSpenders map[uint32]*OutputSp
 		spendingVin := spender.Tx.TxIn[spender.Vin]
 		if spendingVin.PreviousOutPoint.Hash != hash {
 			return nil, fmt.Errorf("invalid tx spending data, %s:%d not spent by %s",
-				hash, i, spender.Tx.TxHash())
+				hash, i, spendHash)
 		}
 		// Use the spending tx input script to retrieve swap details.
 		contractData, contractScript, secret, isRefund, err :=
@@ -372,6 +395,10 @@ func MsgTxAtomicSwapsInfo(msgTx *wire.MsgTx, outputSpenders map[uint32]*OutputSp
 		if contractData != nil {
 			appendFound("Contract")
 			txSwaps.Contracts[uint32(i)] = &AtomicSwapData{
+				ContractTx:       &hash,
+				ContractVout:     uint32(i),
+				SpendTx:          &spendHash,
+				SpendVin:         spender.Vin,
 				Value:            vout.Value,
 				ContractAddress:  contractData.ContractAddress.String(),
 				RecipientAddress: contractData.RecipientAddress.String(),
@@ -397,15 +424,17 @@ func MsgTxAtomicSwapsInfo(msgTx *wire.MsgTx, outputSpenders map[uint32]*OutputSp
 			continue
 		}
 		swapInfo := &AtomicSwapData{
-			PrevTx:           &vin.PreviousOutPoint.Hash,
-			PrevVout:         vin.PreviousOutPoint.Index,
+			ContractTx:       &vin.PreviousOutPoint.Hash,
+			ContractVout:     vin.PreviousOutPoint.Index,
+			SpendTx:          &hash,
+			SpendVin:         uint32(i),
 			Value:            vin.ValueIn,
 			ContractAddress:  contractData.ContractAddress.String(),
 			RecipientAddress: contractData.RecipientAddress.String(),
 			RefundAddress:    contractData.RefundAddress.String(),
 			Locktime:         contractData.Locktime,
 			SecretHash:       contractData.SecretHash,
-			Secret:           secret,
+			Secret:           secret, // should be empty for refund
 			Contract:         contractScript,
 			IsRefund:         isRefund,
 		}
