@@ -879,6 +879,9 @@ func (bot *ExchangeBot) nextTick() *time.Timer {
 func (bot *ExchangeBot) Cycle() {
 	tNow := time.Now()
 	for _, xc := range bot.Exchanges {
+
+		fmt.Printf("-- ExchangeBot.Cycle.0: %T, %t   ::   %s, %s \n", xc, tNow.Sub(xc.LastTry()) > bot.DataExpiry, xc.LastTry(), tNow)
+
 		if tNow.Sub(xc.LastTry()) > bot.DataExpiry {
 			go xc.Refresh()
 		}

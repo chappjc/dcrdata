@@ -426,6 +426,11 @@ type Exchange interface {
 	UpdateIndices(FiatIndices)
 }
 
+// Doer is an interface for a *http.Client to allow testing of Refresh paths.
+type Doer interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
 // CommonExchange is embedded in all of the exchange types and handles some
 // state tracking and token handling for ExchangeBot communications. The
 // http.Request must be created individually for each exchange.
@@ -434,7 +439,7 @@ type CommonExchange struct {
 	token        string
 	URL          string
 	currentState *ExchangeState
-	client       *http.Client
+	client       Doer
 	lastUpdate   time.Time
 	lastFail     time.Time
 	lastRequest  time.Time
@@ -1689,10 +1694,14 @@ func (bittrex *BittrexExchange) Refresh() {
 	bittrex.LogRequest()
 	priceResponse := new(BittrexPriceResponse)
 	err := bittrex.fetch(bittrex.requests.price, priceResponse)
+	fmt.Println("--BittrexExchange.Refresh.0")
 	if err != nil {
+		fmt.Println("--BittrexExchange.Refresh.1")
 		bittrex.fail("Fetch price", err)
 		return
 	}
+
+	fmt.Println("--BittrexExchange.Refresh.2")
 
 	dayStats := new(BittrexMarketSummary)
 	err = bittrex.fetch(bittrex.requests.stats, dayStats)
@@ -1701,10 +1710,18 @@ func (bittrex *BittrexExchange) Refresh() {
 		return
 	}
 
+	fmt.Println("--BittrexExchange.Refresh.3")
+
 	// Check for a depth chart from the websocket orderbook.
 	tryHttp, wsStarting, depth := bittrex.wsDepthStatus(bittrex.connectWs)
 
-	// // If not expecting depth data from the websocket, grab it from HTTP
+	lDepth := 0
+	if depth != nil {
+		lDepth = len(depth.Bids) + len(depth.Asks)
+	}
+	fmt.Println("--BittrexExchange.Refresh.10: tryHttp, wsStarting, len(depth): ", tryHttp, wsStarting, lDepth)
+
+	// If not expecting depth data from the websocket, grab it from HTTP
 	if tryHttp {
 		depthResponse, err := bittrex.orderbook()
 		if err != nil {
@@ -1754,8 +1771,10 @@ func (bittrex *BittrexExchange) Refresh() {
 	}
 
 	if wsStarting {
+		fmt.Println("--BittrexExchange.Refresh.20")
 		bittrex.SilentUpdate(update)
 	} else {
+		fmt.Println("--BittrexExchange.Refresh.30")
 		bittrex.Update(update)
 	}
 }
