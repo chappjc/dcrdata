@@ -664,7 +664,10 @@ func (xc *CommonExchange) setWsFail(err error) {
 		xc.ws = nil
 	}
 	if xc.sr != nil {
-		xc.sr.Close()
+		// signalr's Close is impossible to use confidently because it will hang
+		// if it's read loop has broken for any reason, and we can't determine
+		// that at all let alone in a non-racy way.
+		go xc.sr.Close()
 		// Clear the field to prevent double Close'ing. signalr will hang on
 		// second call.
 		xc.sr = nil
@@ -722,7 +725,12 @@ func (xc *CommonExchange) wsErrorCount() int {
 // used instead of connectWebsocket.
 func (xc *CommonExchange) connectSignalr(cfg *signalrConfig) (err error) {
 	if cfg.errHandler == nil {
-		cfg.errHandler = xc.setWsFail
+		cfg.errHandler = func(err error) {
+			xc.wsMtx.Lock()
+			xc.sr = nil // don't allow setWsFail to attempt Close, which will hang
+			xc.wsMtx.Unlock()
+			xc.setWsFail(err)
+		}
 	}
 	xc.wsMtx.Lock()
 	defer xc.wsMtx.Unlock()
